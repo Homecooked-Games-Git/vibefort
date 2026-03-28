@@ -4,6 +4,8 @@ from vibefort.depscan import (
     parse_package_json,
     parse_pyproject_toml,
     scan_dependencies,
+    verify_package_lock,
+    verify_poetry_lock,
 )
 
 
@@ -44,3 +46,31 @@ def test_scan_clean_deps(tmp_path):
     findings = scan_dependencies(tmp_path)
     # Should have no typosquat findings (CVE findings depend on live API)
     assert not any("typosquat" in f.issue.lower() for f in findings)
+
+
+def test_package_lock_http_url(tmp_path):
+    lock = tmp_path / "package-lock.json"
+    lock.write_text('{"packages": {"node_modules/evil": {"version": "1.0.0", "resolved": "http://registry.npmjs.org/evil/-/evil-1.0.0.tgz"}}}')
+    findings = verify_package_lock(lock)
+    assert any("HTTP" in f.issue for f in findings)
+
+
+def test_package_lock_missing_integrity(tmp_path):
+    lock = tmp_path / "package-lock.json"
+    lock.write_text('{"packages": {"node_modules/pkg": {"version": "1.0.0", "resolved": "https://registry.npmjs.org/pkg/-/pkg-1.0.0.tgz"}}}')
+    findings = verify_package_lock(lock)
+    assert any("Missing integrity" in f.issue for f in findings)
+
+
+def test_package_lock_clean(tmp_path):
+    lock = tmp_path / "package-lock.json"
+    lock.write_text('{"packages": {"node_modules/pkg": {"version": "1.0.0", "resolved": "https://registry.npmjs.org/pkg/-/pkg-1.0.0.tgz", "integrity": "sha512-abc123"}}}')
+    findings = verify_package_lock(lock)
+    assert len(findings) == 0
+
+
+def test_poetry_lock_missing_hashes(tmp_path):
+    lock = tmp_path / "poetry.lock"
+    lock.write_text('[[package]]\nname = "flask"\nversion = "3.1.0"\n')
+    findings = verify_poetry_lock(lock)
+    assert any("Missing file hashes" in f.issue for f in findings)

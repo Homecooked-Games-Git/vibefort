@@ -1,5 +1,6 @@
 """Dependency auditor — scan all project dependencies for issues."""
 
+import hashlib
 import re
 from pathlib import Path
 from dataclasses import dataclass
@@ -99,6 +100,97 @@ DEP_FILES = {
 }
 
 
+def verify_package_lock(path: Path) -> list[DepFinding]:
+    """Verify package-lock.json integrity — check that resolved URLs use HTTPS and hashes are present."""
+    import json
+    findings = []
+    try:
+        data = json.loads(path.read_text(errors="ignore"))
+    except Exception:
+        return []
+
+    packages = data.get("packages", {})
+    for pkg_path, info in packages.items():
+        if not pkg_path:  # Root package
+            continue
+        name = pkg_path.replace("node_modules/", "")
+        resolved = info.get("resolved", "")
+        integrity = info.get("integrity", "")
+
+        # Check for HTTP (not HTTPS) registry URLs
+        if resolved and resolved.startswith("http://"):
+            findings.append(DepFinding(
+                package=name,
+                version=info.get("version", ""),
+                source="package-lock.json",
+                issue="Resolved URL uses HTTP instead of HTTPS — vulnerable to MITM",
+                severity="high",
+            ))
+
+        # Check for missing integrity hash
+        if resolved and not integrity:
+            findings.append(DepFinding(
+                package=name,
+                version=info.get("version", ""),
+                source="package-lock.json",
+                issue="Missing integrity hash — package cannot be verified",
+                severity="medium",
+            ))
+
+        # Check for non-registry URLs (git, file, etc.)
+        if resolved and not resolved.startswith("https://registry.npmjs.org"):
+            if resolved.startswith("git") or resolved.startswith("file:"):
+                findings.append(DepFinding(
+                    package=name,
+                    version=info.get("version", ""),
+                    source="package-lock.json",
+                    issue=f"Non-registry source: {resolved[:80]}",
+                    severity="medium",
+                ))
+
+    return findings
+
+
+def verify_poetry_lock(path: Path) -> list[DepFinding]:
+    """Verify poetry.lock integrity — check that hashes are present and packages are from PyPI."""
+    import toml
+    findings = []
+    try:
+        data = toml.load(path)
+    except Exception:
+        return []
+
+    for pkg in data.get("package", []):
+        name = pkg.get("name", "")
+        version = pkg.get("version", "")
+        source = pkg.get("source", {})
+
+        # Check for non-PyPI sources
+        if source and source.get("type") != "legacy":
+            src_url = source.get("url", "")
+            if src_url and "pypi.org" not in src_url:
+                findings.append(DepFinding(
+                    package=name,
+                    version=version,
+                    source="poetry.lock",
+                    issue=f"Non-PyPI source: {src_url[:80]}",
+                    severity="medium",
+                ))
+
+        # Check for missing file hashes
+        files = pkg.get("files", [])
+        if not files:
+            findings.append(DepFinding(
+                package=name,
+                version=version,
+                source="poetry.lock",
+                issue="Missing file hashes — package cannot be verified",
+                severity="medium",
+            ))
+
+    return findings
+
+
 def scan_dependencies(directory: str | Path) -> list[DepFinding]:
     """Scan all dependency files in a directory."""
     root = Path(directory).resolve()
@@ -144,5 +236,15 @@ def scan_dependencies(directory: str | Path) -> list[DepFinding]:
                         ))
                 except Exception:
                     pass
+
+    # Lock file integrity checks
+    lock_files = {
+        "package-lock.json": verify_package_lock,
+        "poetry.lock": verify_poetry_lock,
+    }
+    for filename, verifier in lock_files.items():
+        lock_path = root / filename
+        if lock_path.exists():
+            findings.extend(verifier(lock_path))
 
     return findings

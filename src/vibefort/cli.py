@@ -170,6 +170,13 @@ def scan(path):
         console.print()
     console.print()
 
+    # Offer auto-fixes
+    if findings:
+        from vibefort.autofix import suggest_fixes
+        fixes = suggest_fixes(findings, path)
+        if fixes:
+            console.print(f"  [green]{fixes} fix(es) applied.[/green]\n")
+
 
 @main.command()
 @click.argument("path", default=".", type=click.Path(exists=True))
@@ -219,6 +226,106 @@ def audit():
 
     console.print(f"  [bold red]{len(findings)} potential issue(s) found.[/bold red]")
     console.print(f"  [dim]Review each finding carefully. Not all findings are confirmed compromises.[/dim]\n")
+
+
+@main.command()
+def update():
+    """Update VibeFort to the latest version."""
+    import subprocess as sp
+    from vibefort import __version__
+    from vibefort.banner import check_for_update_online
+
+    console.print(f"\n  Current version: [bold]{__version__}[/bold]")
+
+    update_msg = check_for_update_online()
+    if not update_msg:
+        console.print("  [green]✔ Already up to date.[/green]\n")
+        return
+
+    console.print(f"  [yellow]↑ {update_msg}[/yellow]\n")
+
+    # Try pipx first, then pip
+    for cmd in [["pipx", "upgrade", "vibefort"], ["pip", "install", "-U", "vibefort"]]:
+        try:
+            result = sp.run(cmd, capture_output=True, text=True, timeout=120)
+            if result.returncode == 0:
+                console.print(f"  [green]✔ Updated successfully via {cmd[0]}.[/green]\n")
+                return
+        except (FileNotFoundError, sp.TimeoutExpired):
+            continue
+
+    console.print("  [red]✖ Could not update. Try manually:[/red]")
+    console.print("    pip install -U vibefort\n")
+
+
+@main.command()
+@click.argument("key", required=False)
+@click.argument("value", required=False)
+def config(key, value):
+    """View or edit VibeFort configuration.
+
+    vibefort config              — show all settings
+    vibefort config <key>        — show one setting
+    vibefort config <key> <val>  — set a value
+    """
+    from vibefort.config import load_config, save_config
+    from rich.markup import escape
+
+    cfg = load_config()
+
+    if key is None:
+        # Show all settings
+        console.print("\n[bold]VibeFort Configuration[/bold]\n")
+        from dataclasses import fields
+        for f in fields(cfg):
+            val = getattr(cfg, f.name)
+            console.print(f"  [dim]{f.name}[/dim] = {escape(str(val))}")
+        console.print(f"\n  [dim]Config file: ~/.vibefort/config.toml[/dim]\n")
+        return
+
+    if value is None:
+        # Show one setting
+        if hasattr(cfg, key):
+            console.print(f"  {key} = {escape(str(getattr(cfg, key)))}")
+        else:
+            console.print(f"  [red]Unknown setting: {escape(key)}[/red]")
+        return
+
+    # Set a value
+    if not hasattr(cfg, key):
+        console.print(f"  [red]Unknown setting: {escape(key)}[/red]")
+        return
+
+    # Type coercion
+    current = getattr(cfg, key)
+    if isinstance(current, bool):
+        setattr(cfg, key, value.lower() in ("true", "1", "yes"))
+    elif isinstance(current, int):
+        setattr(cfg, key, int(value))
+    else:
+        setattr(cfg, key, value)
+
+    save_config(cfg)
+    console.print(f"  [green]✔ {escape(key)} = {escape(str(getattr(cfg, key)))}[/green]")
+
+
+@main.command()
+@click.argument("shell_type", type=click.Choice(["zsh", "bash", "fish"]))
+def completions(shell_type):
+    """Generate shell completion script.
+
+    Usage:
+      vibefort completions zsh >> ~/.zshrc
+      vibefort completions bash >> ~/.bashrc
+    """
+    env_var = "_VIBEFORT_COMPLETE"
+
+    if shell_type == "zsh":
+        console.print(f'eval "$({env_var}=zsh_source vibefort)"')
+    elif shell_type == "bash":
+        console.print(f'eval "$({env_var}=bash_source vibefort)"')
+    elif shell_type == "fish":
+        console.print(f'{env_var}=fish_source vibefort | source')
 
 
 @main.command()
