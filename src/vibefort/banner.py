@@ -59,13 +59,20 @@ def _get_project_scan_info() -> tuple[str, int]:
 
 def _check_for_update() -> bool:
     """Check cached update info. Returns True if update available."""
+    from vibefort import __version__
     cache_file = constants.CACHE_DIR / "update_check.json"
     try:
         if cache_file.exists():
             data = json.loads(cache_file.read_text())
             checked_at = datetime.fromisoformat(data.get("checked_at", ""))
             if datetime.now() - checked_at < timedelta(hours=24):
-                return bool(data.get("message", ""))
+                # Verify the cached version is actually newer than what's running
+                cached_version = data.get("latest", "")
+                if cached_version and _is_newer(cached_version, __version__):
+                    return True
+                # We're up to date — clear stale cache
+                cache_file.unlink()
+                return False
     except Exception:
         pass
     return False
