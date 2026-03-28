@@ -89,6 +89,19 @@ ENV_PATTERNS = [
      "env-secret", "Secret value in .env file — ensure .env is in .gitignore", "high"),
 ]
 
+# Stricter patterns for .env.example — only flag values that look like real secrets
+# (skip placeholders like "your-key-here", "xxx", "changeme", empty values)
+_PLACEHOLDER_VALUES = re.compile(
+    r'=\s*(?:your[-_]|xxx|changeme|replace[-_]|TODO|FIXME|<|""|\'\'|\s*$)',
+    re.IGNORECASE,
+)
+
+ENV_EXAMPLE_PATTERNS = [
+    # Real API keys accidentally left in example files (long alphanumeric strings)
+    (re.compile(r'(?:SECRET|PASSWORD|TOKEN|API_KEY|PRIVATE_KEY)\s*=\s*[A-Za-z0-9/+=_-]{20,}', re.IGNORECASE | re.MULTILINE),
+     "env-example-real-secret", "Real secret value in example file — use a placeholder instead", "high"),
+]
+
 # File extensions to scan
 SCAN_EXTENSIONS = {
     ".py": PYTHON_PATTERNS,
@@ -121,18 +134,21 @@ def scan_directory(directory: str | Path) -> list[CodeFinding]:
         if filepath.is_symlink():
             continue
 
-        # Check .env files by name (skip .env.example, .env.sample, .env.template)
+        # Check .env files by name
         if filepath.name == ".env" or filepath.name.startswith(".env."):
-            skip_suffixes = (".example", ".sample", ".template", ".defaults", ".test")
-            if any(filepath.name.endswith(s) for s in skip_suffixes):
-                continue
-            # Skip if .env is already in .gitignore (it's handled correctly)
+            # Skip if .env is already in .gitignore (handled correctly)
             gitignore = root / ".gitignore"
-            if gitignore.exists():
+            if filepath.name == ".env" and gitignore.exists():
                 gi_content = gitignore.read_text(errors="ignore")
                 if ".env" in gi_content:
                     continue
-            patterns = ENV_PATTERNS
+            # For .env.example/.sample/.template — use stricter patterns
+            # that only flag values that look like real secrets, not placeholders
+            example_suffixes = (".example", ".sample", ".template", ".defaults")
+            if any(filepath.name.endswith(s) for s in example_suffixes):
+                patterns = ENV_EXAMPLE_PATTERNS
+            else:
+                patterns = ENV_PATTERNS
         elif filepath.suffix in SCAN_EXTENSIONS:
             patterns = SCAN_EXTENSIONS[filepath.suffix]
         else:
