@@ -130,6 +130,98 @@ def banner(title, short):
 
 
 @main.command()
+@click.argument("path", default=".", type=click.Path(exists=True))
+def scan(path):
+    """Scan a project for insecure code patterns."""
+    from vibefort.codescan import scan_directory
+    from rich.markup import escape
+
+    console.print(f"\n[bold]Scanning {escape(path)}...[/bold]\n")
+
+    findings = scan_directory(path)
+
+    if not findings:
+        console.print("[green]✔ No issues found.[/green]\n")
+        return
+
+    # Group by severity
+    by_severity = {"critical": [], "high": [], "medium": [], "low": []}
+    for f in findings:
+        by_severity.get(f.severity, by_severity["low"]).append(f)
+
+    severity_colors = {"critical": "bold red", "high": "red", "medium": "yellow", "low": "dim"}
+
+    for severity in ["critical", "high", "medium", "low"]:
+        items = by_severity[severity]
+        if not items:
+            continue
+        color = severity_colors[severity]
+        console.print(f"  [{color}]{severity.upper()} ({len(items)})[/{color}]")
+        for f in items:
+            console.print(f"    {escape(f.file)}:{f.line} — {escape(f.description)}")
+        console.print()
+
+    total = len(findings)
+    critical = len(by_severity["critical"])
+    console.print(f"  [bold]{total} issue(s) found[/bold]", end="")
+    if critical:
+        console.print(f" [bold red]({critical} critical)[/bold red]")
+    else:
+        console.print()
+    console.print()
+
+
+@main.command()
+@click.argument("path", default=".", type=click.Path(exists=True))
+def deps(path):
+    """Audit project dependencies for vulnerabilities and typosquatting."""
+    from vibefort.depscan import scan_dependencies
+    from rich.markup import escape
+
+    console.print(f"\n[bold]Auditing dependencies in {path}...[/bold]\n")
+
+    findings = scan_dependencies(path)
+
+    if not findings:
+        console.print("[green]\u2714 All dependencies look clean.[/green]\n")
+        return
+
+    for f in findings:
+        severity_colors = {"critical": "bold red", "high": "red", "medium": "yellow", "low": "dim"}
+        color = severity_colors.get(f.severity, "dim")
+        console.print(f"  [{color}]\u2716 {escape(f.package)}{'==' + escape(f.version) if f.version else ''}[/{color}] ({escape(f.source)})")
+        console.print(f"    {escape(f.issue)}")
+        console.print()
+
+    console.print(f"  [bold]{len(findings)} issue(s) found in project dependencies.[/bold]\n")
+
+
+@main.command()
+def audit():
+    """Check if your machine shows signs of compromise."""
+    from vibefort.sysaudit import run_audit
+    from rich.markup import escape
+
+    console.print("\n[bold]Running system audit...[/bold]\n")
+
+    findings = run_audit()
+
+    if not findings:
+        console.print("[green]✔ No signs of compromise detected.[/green]\n")
+        return
+
+    for f in findings:
+        severity_colors = {"critical": "bold red", "high": "red", "medium": "yellow"}
+        color = severity_colors.get(f.severity, "dim")
+        console.print(f"  [{color}]✖ {escape(f.description)}[/{color}]")
+        console.print(f"    [dim]{escape(f.path)}[/dim]")
+        console.print()
+
+    console.print(f"  [bold red]{len(findings)} potential issue(s) found.[/bold red]")
+    console.print(f"  [dim]Review each finding carefully. Not all findings are confirmed compromises.[/dim]\n")
+
+
+@main.command()
 @click.argument("manager")
 @click.argument("args", nargs=-1)
 def intercept(manager, args):
