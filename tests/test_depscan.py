@@ -74,3 +74,36 @@ def test_poetry_lock_missing_hashes(tmp_path):
     lock.write_text('[[package]]\nname = "flask"\nversion = "3.1.0"\n')
     findings = verify_poetry_lock(lock)
     assert any("Missing file hashes" in f.issue for f in findings)
+
+
+def test_parse_pipfile(tmp_path):
+    from vibefort.depscan import parse_pipfile
+    pf = tmp_path / "Pipfile"
+    pf.write_text('[packages]\nflask = "*"\nrequests = ">=2.28"\n')
+    deps = parse_pipfile(pf)
+    assert ("flask", "") in deps
+    assert len(deps) == 2
+
+
+def test_scan_detects_nonexistent_package(tmp_path):
+    req = tmp_path / "requirements.txt"
+    req.write_text("totally-fake-pkg-xyz-123==1.0.0\n")
+    findings = scan_dependencies(tmp_path)
+    assert any("does not exist" in f.issue.lower() or "typosquat" in f.issue.lower() for f in findings)
+
+
+def test_scan_with_allowlist(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    req = tmp_path / "requirements.txt"
+    req.write_text("reqeusts==2.28.0\n")
+    # Create allowlist that allows the typosquat
+    (tmp_path / ".vibefort.toml").write_text('[allow-packages]\n"reqeusts" = "intentional"\n')
+    findings = scan_dependencies(tmp_path)
+    assert not any("typosquat" in f.issue.lower() for f in findings)
+
+
+def test_lock_file_integrated_in_scan(tmp_path):
+    lock = tmp_path / "package-lock.json"
+    lock.write_text('{"packages": {"node_modules/pkg": {"version": "1.0", "resolved": "http://evil.com/pkg.tgz"}}}')
+    findings = scan_dependencies(tmp_path)
+    assert any("HTTP" in f.issue for f in findings)
