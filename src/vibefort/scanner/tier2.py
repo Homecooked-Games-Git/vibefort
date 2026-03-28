@@ -263,16 +263,18 @@ def download_and_scan(package: str, version: str | None = None,
             if manager == "npm":
                 pkg_spec = f"{package}@{version}" if version else package
                 subprocess.run(
-                    ["npm", "pack", pkg_spec,
+                    ["npm", "pack",
                      "--pack-destination", str(download_dir),
-                     "--ignore-scripts"],  # Don't execute prepack/prepare scripts
+                     "--ignore-scripts",  # Don't execute prepack/prepare scripts
+                     "--", pkg_spec],  # -- prevents option injection via package name
                     capture_output=True, text=True, check=True, timeout=60,
                 )
             else:
                 pkg_spec = f"{package}=={version}" if version else package
                 subprocess.run(
                     ["pip", "download", "--no-deps",
-                     "-d", str(download_dir), pkg_spec],  # Prefer wheels (no setup.py execution)
+                     "-d", str(download_dir),
+                     "--", pkg_spec],  # -- prevents option injection via package name
                     capture_output=True, text=True, check=True, timeout=60,
                 )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):

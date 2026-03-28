@@ -17,7 +17,9 @@ def suggest_fixes(findings: list, project_path: str | Path) -> int:
     env_findings = [f for f in findings if f.rule in ("env-not-gitignored", "env-no-gitignore")]
     if env_findings:
         gitignore = root / ".gitignore"
-        if Confirm.ask("\n  [yellow].env file found but not in .gitignore.[/yellow] Add it?", default=True):
+        if gitignore.is_symlink():
+            console.print("  [yellow].gitignore is a symlink — skipping auto-fix[/yellow]")
+        elif Confirm.ask("\n  [yellow].env file found but not in .gitignore.[/yellow] Add it?", default=True):
             if gitignore.exists():
                 content = gitignore.read_text()
                 if not content.endswith("\n"):

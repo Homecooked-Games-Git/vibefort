@@ -185,7 +185,7 @@ def deps(path):
     from vibefort.depscan import scan_dependencies
     from rich.markup import escape
 
-    console.print(f"\n[bold]Auditing dependencies in {path}...[/bold]\n")
+    console.print(f"\n[bold]Auditing dependencies in {escape(str(path))}...[/bold]\n")
 
     findings = scan_dependencies(path)
 
