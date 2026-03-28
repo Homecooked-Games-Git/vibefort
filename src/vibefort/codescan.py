@@ -83,33 +83,16 @@ JS_PATTERNS = [
      "cors-wildcard", "CORS wildcard in configuration", "medium"),
 ]
 
-ENV_PATTERNS = [
-    # Secrets in .env that shouldn't be committed
-    (re.compile(r'(?:SECRET|PASSWORD|TOKEN|API_KEY|PRIVATE_KEY)\s*=\s*\S+', re.IGNORECASE | re.MULTILINE),
-     "env-secret", "Secret value in .env file — ensure .env is in .gitignore", "high"),
-]
+# Secret detection in .env files is handled by betterleaks (234 rules).
+# codescan only checks the structural issue: .env not in .gitignore.
 
-# Stricter patterns for .env.example — only flag values that look like real secrets
-# (skip placeholders like "your-key-here", "xxx", "changeme", empty values)
-_PLACEHOLDER_VALUES = re.compile(
-    r'=\s*(?:your[-_]|xxx|changeme|replace[-_]|TODO|FIXME|<|""|\'\'|\s*$)',
-    re.IGNORECASE,
-)
-
-ENV_EXAMPLE_PATTERNS = [
-    # Real API keys accidentally left in example files (long alphanumeric strings)
-    (re.compile(r'(?:SECRET|PASSWORD|TOKEN|API_KEY|PRIVATE_KEY)\s*=\s*[A-Za-z0-9/+=_-]{20,}', re.IGNORECASE | re.MULTILINE),
-     "env-example-real-secret", "Real secret value in example file — use a placeholder instead", "high"),
-]
-
-# File extensions to scan
+# File extensions to scan for code patterns (secrets handled by betterleaks)
 SCAN_EXTENSIONS = {
     ".py": PYTHON_PATTERNS,
     ".js": JS_PATTERNS,
     ".jsx": JS_PATTERNS,
     ".ts": JS_PATTERNS,
     ".tsx": JS_PATTERNS,
-    ".env": ENV_PATTERNS,
 }
 
 # Directories to skip
@@ -134,39 +117,7 @@ def scan_directory(directory: str | Path) -> list[CodeFinding]:
         if filepath.is_symlink():
             continue
 
-        # Check .env files by name
-        if filepath.name == ".env" or filepath.name.startswith(".env."):
-            # Skip if .env is already in .gitignore (handled correctly)
-            gitignore = root / ".gitignore"
-            if filepath.name == ".env" and gitignore.exists():
-                gi_content = gitignore.read_text(errors="ignore")
-                if ".env" in gi_content:
-                    continue
-            # For .env.example/.sample/.template — use stricter patterns
-            # that only flag values that look like real secrets, not placeholders
-            example_suffixes = (".example", ".sample", ".template", ".defaults")
-            if any(filepath.name.endswith(s) for s in example_suffixes):
-                patterns = ENV_EXAMPLE_PATTERNS
-            else:
-                patterns = ENV_PATTERNS
-        elif filepath.suffix in SCAN_EXTENSIONS:
-            patterns = SCAN_EXTENSIONS[filepath.suffix]
-        else:
-            continue
-
-        if not filepath.is_file():
-            continue
-
-        # Size limit
-        if filepath.stat().st_size > MAX_SCAN_FILE_SIZE:
-            continue
-
-        try:
-            content = filepath.read_text(errors="ignore")
-        except OSError:
-            continue
-
-        # Also check: .env exists but not in .gitignore
+        # Check .env structural issue (content scanning handled by betterleaks)
         if filepath.name == ".env":
             gitignore = root / ".gitignore"
             if gitignore.exists():
@@ -187,6 +138,24 @@ def scan_directory(directory: str | Path) -> list[CodeFinding]:
                     description=".env file exists but no .gitignore found — secrets will be committed",
                     severity="critical",
                 ))
+            continue
+
+        if filepath.suffix in SCAN_EXTENSIONS:
+            patterns = SCAN_EXTENSIONS[filepath.suffix]
+        else:
+            continue
+
+        if not filepath.is_file():
+            continue
+
+        # Size limit
+        if filepath.stat().st_size > MAX_SCAN_FILE_SIZE:
+            continue
+
+        try:
+            content = filepath.read_text(errors="ignore")
+        except OSError:
+            continue
 
         for line_num, line_text in enumerate(content.splitlines(), 1):
             for pattern, rule, description, severity in patterns:

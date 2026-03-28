@@ -132,16 +132,30 @@ def banner(title, short):
 @main.command()
 @click.argument("path", default=".", type=click.Path(exists=True))
 def scan(path):
-    """Scan a project for insecure code patterns."""
-    from vibefort.codescan import scan_directory
+    """Scan a project for secrets and insecure code patterns."""
+    from pathlib import Path
+    from vibefort.codescan import scan_directory, CodeFinding
+    from vibefort.secrets import is_betterleaks_installed, run_betterleaks_scan
     from rich.markup import escape
 
     console.print(f"\n[bold]Scanning {escape(path)}...[/bold]\n")
 
     findings = scan_directory(path)
 
+    # Also run betterleaks on the full directory for secret detection
+    if is_betterleaks_installed():
+        secret_findings = run_betterleaks_scan(str(Path(path).resolve()))
+        for sf in secret_findings:
+            findings.append(CodeFinding(
+                file=sf["file"],
+                line=sf["line"],
+                rule=sf["rule"],
+                description=sf["description"],
+                severity="critical",
+            ))
+
     if not findings:
-        console.print("[green]✔ No issues found.[/green]\n")
+        console.print("[green]\u2714 No issues found.[/green]\n")
         return
 
     # Group by severity
@@ -158,7 +172,7 @@ def scan(path):
         color = severity_colors[severity]
         console.print(f"  [{color}]{severity.upper()} ({len(items)})[/{color}]")
         for f in items:
-            console.print(f"    {escape(f.file)}:{f.line} — {escape(f.description)}")
+            console.print(f"    {escape(f.file)}:{f.line} \u2014 {escape(f.description)}")
         console.print()
 
     total = len(findings)

@@ -95,6 +95,41 @@ def download_betterleaks(*, progress_callback=None) -> Path:
     return constants.BETTERLEAKS_PATH
 
 
+def run_betterleaks_scan(directory: str) -> list[dict]:
+    """Run betterleaks on an entire directory (for vibefort scan)."""
+    if not is_betterleaks_installed():
+        return []
+
+    with tempfile.TemporaryDirectory() as tmp:
+        report_path = Path(tmp) / "report.json"
+
+        cmd = [
+            str(constants.BETTERLEAKS_PATH), "dir",
+            "--report-format", "json",
+            "--report-path", str(report_path),
+            "--no-banner",
+            directory,
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        if result.returncode == 0:
+            return []
+
+        if report_path.exists():
+            findings = parse_betterleaks_output(report_path.read_text())
+            # Make paths relative to the scanned directory
+            dir_path = Path(directory).resolve()
+            for f in findings:
+                try:
+                    f["file"] = str(Path(f["file"]).resolve().relative_to(dir_path))
+                except ValueError:
+                    pass
+            return findings
+
+        return parse_betterleaks_output(result.stdout)
+
+
 def run_betterleaks_on_files(file_paths: list[str]) -> list[dict]:
     if not is_betterleaks_installed() or not file_paths:
         return []
