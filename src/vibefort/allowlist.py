@@ -84,9 +84,3 @@ def is_rule_allowed(rule_id: str) -> bool:
     config, _ = _find_config()
     allowed = config.get("allow-rules", {})
     return rule_id.lower() in {k.lower() for k in allowed}
-
-
-def get_allowed_packages() -> dict[str, str]:
-    """Get all allowed packages with their reasons."""
-    config, _ = _find_config()
-    return config.get("allow-packages", {})

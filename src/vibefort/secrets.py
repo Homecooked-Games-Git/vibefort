@@ -111,7 +111,7 @@ def run_betterleaks_scan(directory: str) -> list[dict]:
             directory,
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
 
         if result.returncode == 0:
             return []
@@ -159,7 +159,7 @@ def run_betterleaks_on_files(file_paths: list[str]) -> list[dict]:
             str(tmp_path),
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
 
         if result.returncode == 0:
             return []

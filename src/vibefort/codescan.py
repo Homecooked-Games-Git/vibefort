@@ -2,7 +2,7 @@
 
 import re
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 # Safety limits
 MAX_SCAN_FILE_SIZE = 10 * 1024 * 1024  # 10 MB

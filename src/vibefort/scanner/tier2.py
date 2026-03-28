@@ -186,45 +186,6 @@ def scan_for_obfuscation(directory: Path) -> list[dict]:
     return findings
 
 
-def check_package_metadata(package: str, manager: str = "pip") -> dict | None:
-    """Check PyPI or npm registry metadata for red flags."""
-    try:
-        if manager == "npm":
-            url = f"https://registry.npmjs.org/{package}"
-            resp = httpx.get(url, follow_redirects=True, timeout=15)
-            resp.raise_for_status()
-            data = resp.json()
-
-            latest_version = data.get("dist-tags", {}).get("latest", "")
-            versions = data.get("versions", {})
-            version_count = len(versions)
-            maintainers = data.get("maintainers", [])
-
-            return {
-                "name": package,
-                "latest_version": latest_version,
-                "version_count": version_count,
-                "maintainer_count": len(maintainers),
-            }
-        else:
-            url = f"https://pypi.org/pypi/{package}/json"
-            resp = httpx.get(url, follow_redirects=True, timeout=15)
-            resp.raise_for_status()
-            data = resp.json()
-
-            info = data.get("info", {})
-            releases = data.get("releases", {})
-
-            return {
-                "name": package,
-                "latest_version": info.get("version", ""),
-                "version_count": len(releases),
-                "author": info.get("author", ""),
-                "home_page": info.get("home_page", ""),
-                "project_urls": info.get("project_urls", {}),
-            }
-    except (httpx.HTTPError, json.JSONDecodeError):
-        return None
 
 
 def _extract(archive: Path, dest: Path) -> None:
