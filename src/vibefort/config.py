@@ -37,6 +37,8 @@ def load_config() -> Config:
 def save_config(config: Config) -> None:
     """Save config to disk with restrictive permissions."""
     constants.VIBEFORT_HOME.mkdir(parents=True, exist_ok=True)
+    # Restrict home directory to owner only
+    os.chmod(constants.VIBEFORT_HOME, stat.S_IRWXU)
 
     data = asdict(config)
     # Remove None values for cleaner TOML

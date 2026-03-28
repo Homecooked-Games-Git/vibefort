@@ -198,14 +198,20 @@ def check_package_metadata(package: str, manager: str = "pip") -> dict | None:
 
 
 def _extract(archive: Path, dest: Path) -> None:
-    """Extract tar.gz, whl, zip, or tgz archive."""
+    """Extract tar.gz, whl, zip, or tgz archive safely (no path traversal)."""
     name = archive.name.lower()
 
     if name.endswith(".tar.gz") or name.endswith(".tgz"):
         with tarfile.open(archive, "r:gz") as tar:
-            tar.extractall(dest)
+            # filter='data' prevents path traversal (CVE-2007-4559)
+            tar.extractall(dest, filter="data")
     elif name.endswith(".whl") or name.endswith(".zip"):
         with zipfile.ZipFile(archive) as zf:
+            # Validate all paths before extracting
+            for member in zf.namelist():
+                target = (dest / member).resolve()
+                if not str(target).startswith(str(dest.resolve())):
+                    raise ValueError(f"Zip path traversal detected: {member}")
             zf.extractall(dest)
     else:
         raise ValueError(f"Unsupported archive format: {archive.name}")

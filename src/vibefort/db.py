@@ -1,5 +1,7 @@
 """SQLite database for scan history and stats."""
 
+import os
+import stat
 import sqlite3
 from datetime import datetime
 
@@ -8,7 +10,11 @@ import vibefort.constants as constants
 
 def _get_conn() -> sqlite3.Connection:
     constants.DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    is_new = not constants.DB_PATH.exists()
     conn = sqlite3.connect(str(constants.DB_PATH))
+    if is_new:
+        # Restrict to owner read/write only
+        os.chmod(constants.DB_PATH, stat.S_IRUSR | stat.S_IWUSR)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS scan_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

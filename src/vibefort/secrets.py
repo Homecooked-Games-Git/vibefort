@@ -1,5 +1,6 @@
 """Betterleaks binary management and secret scanning."""
 
+import hashlib
 import json
 import os
 import subprocess
@@ -11,6 +12,26 @@ from pathlib import Path
 import httpx
 
 import vibefort.constants as constants
+
+# SHA256 checksums for betterleaks v1.1.1 release binaries
+# Source: https://github.com/betterleaks/betterleaks/releases/tag/v1.1.1
+BETTERLEAKS_CHECKSUMS = {
+    "betterleaks_1.1.1_darwin_arm64.tar.gz": "81eb78a8328f9159421855f282a03ad40c2cfeaa7c7a79f4c42308d705be31c4",
+    "betterleaks_1.1.1_darwin_x64.tar.gz": "9462919fc8b625cc86f5ca216a0ca8366b1492c795f2a52710338e38875078f4",
+    "betterleaks_1.1.1_linux_arm64.tar.gz": "97b774367630846a5f2298f7f3e3f8096f0567d3fc0275b1b63c0e1e16f856f1",
+    "betterleaks_1.1.1_linux_x64.tar.gz": "d590d5f051e49f6769c61dc8cebbce947b20a4042e2915ee234760f81a01c8c4",
+    "betterleaks_1.1.1_windows_arm64.zip": "27897dbe70defaa8ce5e2d0cbbcdbe49708376def2e8ec91ea48d39aa44b6440",
+    "betterleaks_1.1.1_windows_x64.zip": "df3078b80fe0ec9144b10e34b1e29779f1e0e4ad5cbba430eea240b6a3894d70",
+}
+
+
+def _verify_checksum(file_path: Path, expected_hash: str) -> bool:
+    """Verify SHA256 checksum of a downloaded file."""
+    sha256 = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            sha256.update(chunk)
+    return sha256.hexdigest() == expected_hash
 
 
 def is_betterleaks_installed() -> bool:
@@ -37,12 +58,20 @@ def download_betterleaks(*, progress_callback=None) -> Path:
                     if progress_callback and total:
                         progress_callback(downloaded, total)
 
+        # Verify checksum before extracting
+        expected = BETTERLEAKS_CHECKSUMS.get(archive_name)
+        if expected and not _verify_checksum(archive_path, expected):
+            raise RuntimeError(
+                f"Checksum verification failed for {archive_name}. "
+                "The download may be corrupted or tampered with."
+            )
+
         if archive_name.endswith(".tar.gz"):
             with tarfile.open(archive_path, "r:gz") as tar:
                 for member in tar.getmembers():
                     if member.name == "betterleaks" or member.name.endswith("/betterleaks"):
                         member.name = "betterleaks"
-                        tar.extract(member, constants.BIN_DIR)
+                        tar.extract(member, constants.BIN_DIR, filter="data")
                         break
         elif archive_name.endswith(".zip"):
             with zipfile.ZipFile(archive_path) as zf:

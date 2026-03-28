@@ -172,10 +172,6 @@ def _parse_npm_packages(args: list[str]) -> list[tuple[str, str]]:
     return packages
 
 
-# Packages that should never be scanned (self-update, core tools)
-SKIP_PACKAGES = {"vibefort", "pip", "pip3", "setuptools", "wheel"}
-
-
 def run_intercept(manager: str, args: list[str]) -> int:
     """Main interception flow. Returns exit code (0 = proceed, 1 = blocked)."""
     packages = parse_install_args(list(args), manager=manager)
@@ -183,10 +179,6 @@ def run_intercept(manager: str, args: list[str]) -> int:
 
     if not packages:
         # Not an install command or no packages — pass through
-        return _passthrough(manager, args)
-
-    # Skip self-installs and core tools
-    if all(name.lower() in SKIP_PACKAGES for name, _ in packages if not name.startswith("local:")):
         return _passthrough(manager, args)
 
     config = load_config()
