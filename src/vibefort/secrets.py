@@ -136,6 +136,10 @@ def run_betterleaks_on_files(file_paths: list[str]) -> list[dict]:
 
         findings = parse_betterleaks_output(raw)
 
+        # Filter out allowed files and rules
+        from vibefort.allowlist import is_file_allowed, is_rule_allowed
+        findings = [f for f in findings if not is_file_allowed(f["file"]) and not is_rule_allowed(f["rule"])]
+
         # Replace temp paths with original filenames
         for f in findings:
             temp_name = Path(f["file"]).name

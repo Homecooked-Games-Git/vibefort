@@ -9,6 +9,7 @@ from vibefort.config import load_config, save_config
 from vibefort.scanner import ScanResult
 from vibefort.scanner.tier1 import tier1_scan, is_known_safe
 from vibefort.scanner.tier2 import tier2_scan
+from vibefort.allowlist import is_package_allowed
 from vibefort.display import show_safe, show_blocked
 
 # Map each manager to its registry type for scanning
@@ -209,6 +210,12 @@ def run_intercept(manager: str, args: list[str]) -> int:
             show_safe(display_name, "", elapsed)
             continue
 
+        # Allowlisted — skip scanning entirely
+        if is_package_allowed(name):
+            elapsed = f"{time.time() - start:.1f}s"
+            show_safe(name, version, elapsed)
+            continue
+
         # Tier 1: Fast checks
         result = tier1_scan(name, manager=registry)
 
@@ -223,6 +230,7 @@ def run_intercept(manager: str, args: list[str]) -> int:
             # In the top 10k packages — skip deeper checks
             elapsed = f"{time.time() - start:.1f}s"
             show_safe(name, version, elapsed)
+            _check_and_warn_cve(name, version, registry)
             continue
 
         # Tier 2: Deep scan (only for unknown packages)
@@ -239,6 +247,7 @@ def run_intercept(manager: str, args: list[str]) -> int:
 
         elapsed = f"{time.time() - start:.1f}s"
         show_safe(name, version, elapsed)
+        _check_and_warn_cve(name, version, registry)
 
     config.packages_scanned += len(packages)
     save_config(config)
@@ -307,6 +316,32 @@ def _refresh_banner_cache():
         (cache_dir / "banner_title.txt").write_text(get_title())
     except Exception:
         pass
+
+
+def _check_and_warn_cve(name: str, version: str, registry: str):
+    """Check for known CVEs and print warnings (non-blocking)."""
+    if not version:
+        return
+    from vibefort.scanner.cve import check_cve_pip, check_cve_npm
+    from rich.console import Console
+    from rich.markup import escape
+
+    cve_check = check_cve_pip if registry == "pip" else check_cve_npm
+    try:
+        cves = cve_check(name, version)
+    except Exception:
+        return
+
+    if not cves:
+        return
+
+    c = Console()
+    for cve in cves[:3]:
+        cve_id = cve.get("id", "")
+        summary = cve.get("summary", "")
+        fixed = cve.get("fixed_version", "")
+        fixed_str = f" — fixed in {escape(fixed)}" if fixed else ""
+        c.print(f"  [yellow]⚠ {escape(cve_id)}[/yellow]: {escape(summary)}{fixed_str}")
 
 
 def _passthrough(manager: str, args: list[str]) -> int:
