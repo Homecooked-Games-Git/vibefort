@@ -121,8 +121,17 @@ def scan_directory(directory: str | Path) -> list[CodeFinding]:
         if filepath.is_symlink():
             continue
 
-        # Check .env files by name
+        # Check .env files by name (skip .env.example, .env.sample, .env.template)
         if filepath.name == ".env" or filepath.name.startswith(".env."):
+            skip_suffixes = (".example", ".sample", ".template", ".defaults", ".test")
+            if any(filepath.name.endswith(s) for s in skip_suffixes):
+                continue
+            # Skip if .env is already in .gitignore (it's handled correctly)
+            gitignore = root / ".gitignore"
+            if gitignore.exists():
+                gi_content = gitignore.read_text(errors="ignore")
+                if ".env" in gi_content:
+                    continue
             patterns = ENV_PATTERNS
         elif filepath.suffix in SCAN_EXTENSIONS:
             patterns = SCAN_EXTENSIONS[filepath.suffix]
