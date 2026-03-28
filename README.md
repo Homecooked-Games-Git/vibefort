@@ -7,11 +7,13 @@ VibeFort protects vibecoders (Cursor, Bolt, Replit, Claude Code users) from supp
 ## Quick Start
 
 ```bash
-pip install vibefort
+pipx install vibefort
 vibefort install
 ```
 
 That's it. You never type `vibefort` again.
+
+> **Why pipx?** VibeFort is a system-wide CLI tool, not a project dependency. `pipx` installs it globally in an isolated environment — the standard way to install Python CLI tools. [Install pipx](https://pipx.pypa.io/stable/installation/) if you don't have it: `brew install pipx` (macOS) or `apt install pipx` (Ubuntu).
 
 ## What Happens After Install
 
