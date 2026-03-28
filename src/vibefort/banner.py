@@ -8,29 +8,94 @@ import vibefort.constants as constants
 from vibefort.config import load_config
 
 
+def _is_project_dir() -> bool:
+    """Check if current directory looks like a project (has dependency files)."""
+    cwd = Path.cwd()
+    project_files = [
+        "requirements.txt", "pyproject.toml", "Pipfile", "setup.py",
+        "package.json", "Cargo.toml", "go.mod", "Gemfile",
+    ]
+    return any((cwd / f).exists() for f in project_files)
+
+
+def _get_project_scan_info() -> tuple[str, int]:
+    """Get last scan time and issue count for current directory.
+
+    Returns (time_str, issue_count). time_str is empty if never scanned.
+    """
+    try:
+        from vibefort.db import _get_conn
+        cwd = str(Path.cwd())
+        conn = _get_conn()
+        row = conn.execute(
+            "SELECT timestamp, result, details FROM scan_log WHERE target = ? ORDER BY id DESC LIMIT 1",
+            (cwd,),
+        ).fetchone()
+        conn.close()
+        if not row:
+            return "", 0
+
+        scan_time = datetime.fromisoformat(row[0])
+        delta = datetime.now() - scan_time
+        if delta < timedelta(minutes=1):
+            time_str = "just now"
+        elif delta < timedelta(hours=1):
+            time_str = f"{int(delta.total_seconds() / 60)}m ago"
+        elif delta < timedelta(days=1):
+            time_str = f"{int(delta.total_seconds() / 3600)}h ago"
+        else:
+            time_str = f"{delta.days}d ago"
+
+        # Try to get issue count from details
+        try:
+            issue_count = int(row[2]) if row[2] else 0
+        except (ValueError, TypeError):
+            issue_count = 0
+
+        return time_str, issue_count
+    except Exception:
+        return "", 0
+
+
+def _check_for_update() -> bool:
+    """Check cached update info. Returns True if update available."""
+    cache_file = constants.CACHE_DIR / "update_check.json"
+    try:
+        if cache_file.exists():
+            data = json.loads(cache_file.read_text())
+            checked_at = datetime.fromisoformat(data.get("checked_at", ""))
+            if datetime.now() - checked_at < timedelta(hours=24):
+                return bool(data.get("message", ""))
+    except Exception:
+        pass
+    return False
+
+
 def get_title() -> str:
     """Plain text for terminal window/tab title (no ANSI colors)."""
     config = load_config()
     if not config.shell_hook_installed and not config.git_hook_installed:
         return ""
 
-    parts = ["\U0001f3f0 VibeFort"]
+    parts = ["\U0001f3f0 protected"]
 
-    if config.packages_blocked:
-        parts.append(f"{config.packages_blocked} blocked")
+    if _is_project_dir():
+        scan_time, issues = _get_project_scan_info()
+        if issues:
+            parts.append(f"{issues} issues")
+        elif not scan_time:
+            parts.append("never scanned")
+        else:
+            parts.append(f"scanned {scan_time}")
 
-    if config.secrets_caught:
-        parts.append(f"{config.secrets_caught} secrets caught")
-
-    update = _check_for_update()
-    if update:
-        parts.append(f"\u2191 {update}")
+    if _check_for_update():
+        parts.append("update \u2191")
 
     return " \u00b7 ".join(parts)
 
 
 def get_short() -> str:
-    """Compact status for zsh RPROMPT (with ANSI colors, no newlines).
+    """Compact status for zsh RPROMPT (with ANSI colors).
 
     Uses zsh %{ %} escapes so ANSI codes don't break prompt width calculation.
     """
@@ -38,95 +103,46 @@ def get_short() -> str:
     if not config.shell_hook_installed and not config.git_hook_installed:
         return ""
 
-    parts = []
+    # Castle + "protected" in green
+    parts = ["%{\033[32m%}\U0001f3f0 protected%{\033[0m%}"]
 
-    # Fort
-    parts.append("%{\033[32m%}\U0001f3f0%{\033[0m%}")
+    if _is_project_dir():
+        scan_time, issues = _get_project_scan_info()
+        if issues:
+            parts.append(f"%{{\033[31m%}}{issues} issues%{{\033[0m%}}")
+        elif not scan_time:
+            parts.append(f"%{{\033[90m%}}never scanned%{{\033[0m%}}")
+        else:
+            parts.append(f"%{{\033[90m%}}scanned {scan_time}%{{\033[0m%}}")
 
-    # Key stats
-    if config.packages_blocked:
-        parts.append(f"%{{\033[31m%}}{config.packages_blocked}blk%{{\033[0m%}}")
-    if config.secrets_caught:
-        parts.append(f"%{{\033[31m%}}{config.secrets_caught}sec%{{\033[0m%}}")
+    if _check_for_update():
+        parts.append(f"%{{\033[33m%}}update \u2191%{{\033[0m%}}")
 
-    # Update
-    update = _check_for_update()
-    if update:
-        parts.append(f"%{{\033[33m%}}\u2191%{{\033[0m%}}")
-
-    return " ".join(parts)
+    return " \u00b7 ".join(parts)
 
 
 def get_banner() -> str:
     """Full banner with ANSI colors (for `vibefort banner` command)."""
     config = load_config()
-
     if not config.shell_hook_installed and not config.git_hook_installed:
         return ""
 
-    parts = []
+    # Castle + "protected" in green
+    parts = ["\033[32m\U0001f3f0 protected\033[0m"]
 
-    parts.append("\033[32m\U0001f3f0 VibeFort\033[0m")
+    if _is_project_dir():
+        scan_time, issues = _get_project_scan_info()
+        if issues:
+            parts.append(f"\033[31m{issues} issues\033[0m")
+        elif not scan_time:
+            parts.append(f"\033[90mnever scanned\033[0m")
+        else:
+            parts.append(f"\033[90mscanned {scan_time}\033[0m")
 
-    stats = []
-    if config.packages_scanned:
-        stats.append(f"{config.packages_scanned} scanned")
-    if config.packages_blocked:
-        stats.append(f"\033[31m{config.packages_blocked} blocked\033[0m")
-    if config.secrets_caught:
-        stats.append(f"\033[31m{config.secrets_caught} secrets caught\033[0m")
-    if stats:
-        parts.append(" \u00b7 ".join(stats))
-
-    last_scan = _get_last_scan_time()
-    if last_scan:
-        parts.append(f"\033[90m{last_scan}\033[0m")
-
-    update = _check_for_update()
-    if update:
-        parts.append(f"\033[33m\u2191 {update}\033[0m")
+    if _check_for_update():
+        parts.append(f"\033[33mupdate \u2191\033[0m")
 
     return " \u00b7 ".join(parts)
-
-
-def _get_last_scan_time() -> str:
-    """Get a human-readable 'last scan' time."""
-    try:
-        from vibefort.db import get_last_scan
-        last = get_last_scan()
-        if not last:
-            return ""
-        scan_time = datetime.fromisoformat(last["timestamp"])
-        delta = datetime.now() - scan_time
-        if delta < timedelta(minutes=1):
-            return "scanned just now"
-        elif delta < timedelta(hours=1):
-            mins = int(delta.total_seconds() / 60)
-            return f"scanned {mins}m ago"
-        elif delta < timedelta(days=1):
-            hours = int(delta.total_seconds() / 3600)
-            return f"scanned {hours}h ago"
-        else:
-            days = delta.days
-            return f"scanned {days}d ago"
-    except Exception:
-        return ""
-
-
-def _check_for_update() -> str:
-    """Check cached update info (no network call)."""
-    cache_file = constants.CACHE_DIR / "update_check.json"
-
-    try:
-        if cache_file.exists():
-            data = json.loads(cache_file.read_text())
-            checked_at = datetime.fromisoformat(data.get("checked_at", ""))
-            if datetime.now() - checked_at < timedelta(hours=24):
-                return data.get("message", "")
-    except Exception:
-        pass
-
-    return ""
 
 
 def _is_newer(latest: str, current: str) -> bool:
@@ -159,6 +175,10 @@ def check_for_update_online() -> str:
                 "message": msg,
             }))
             return msg
+        # No update — clear any stale cache
+        cache_file = constants.CACHE_DIR / "update_check.json"
+        if cache_file.exists():
+            cache_file.unlink()
         return ""
     except Exception:
         return ""
