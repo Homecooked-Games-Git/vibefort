@@ -87,7 +87,7 @@ def show_safe(package: str, version: str = "", elapsed: str = "", *, console: Co
     c.print(f"[green]\u2714[/green] {escape(package)}{escape(ver)} \u2014 clean{time_str}")
 
 
-def show_blocked(package: str, reason: str, suggestion: str = "", *, console: Console | None = None):
+def show_blocked(package: str, reason: str, suggestion: str = "", evidence: list[dict] | None = None, *, console: Console | None = None):
     """Show a blocked package result with clear, readable output."""
     c = console or _default_console
 
@@ -109,6 +109,27 @@ def show_blocked(package: str, reason: str, suggestion: str = "", *, console: Co
                 desc = _describe_issue(issue)
                 c.print(f"    [red]\u2022[/red] {escape(desc)}")
             c.print()
+
+    # Show evidence lines (colored diff of what triggered the block)
+    if evidence:
+        c.print(f"  [dim]Evidence:[/dim]")
+        seen = set()
+        shown = 0
+        for e in evidence:
+            line_num = e.get("line", 0)
+            text = e.get("text", "")
+            key = (line_num, text)
+            if key in seen:
+                continue
+            seen.add(key)
+            if shown >= 8:
+                break
+            c.print(f"    [dim]{line_num:>4}[/dim] [on red] {escape(text)} [/on red]")
+            shown += 1
+        remaining = len({(e.get("line"), e.get("text")) for e in evidence}) - shown
+        if remaining > 0:
+            c.print(f"    [dim]... and {remaining} more[/dim]")
+        c.print()
 
     if suggestion:
         c.print(f"  [dim]{escape(suggestion)}[/dim]")

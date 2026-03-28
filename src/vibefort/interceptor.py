@@ -202,7 +202,7 @@ def run_intercept(manager: str, args: list[str]) -> int:
             if local_path.exists():
                 result = _scan_local_path(local_path)
                 if not result.safe:
-                    show_blocked(display_name, result.reason, result.suggestion)
+                    show_blocked(display_name, result.reason, result.suggestion, evidence=result.evidence)
                     blocked = True
                     config.packages_blocked += 1
                     continue
@@ -268,6 +268,8 @@ def _scan_local_path(local_path: Path) -> ScanResult:
 
     all_issues = []
 
+    all_evidence = []
+
     # Scan setup.py
     setup_py = local_path / "setup.py"
     if setup_py.exists():
@@ -275,6 +277,7 @@ def _scan_local_path(local_path: Path) -> ScanResult:
         if result:
             issues = result.get("issues", [])
             all_issues.extend(f"setup.py: {i}" for i in issues)
+            all_evidence.extend(result.get("evidence", []))
 
     # Scan package.json
     pkg_json = local_path / "package.json"
@@ -288,18 +291,21 @@ def _scan_local_path(local_path: Path) -> ScanResult:
     for finding in scan_for_pth_files(local_path):
         issues = finding.get("issues", [])
         all_issues.extend(f".pth: {i}" for i in issues)
+        all_evidence.extend(finding.get("evidence", []))
 
     # Scan for obfuscated code
     for finding in scan_for_obfuscation(local_path):
         issues = finding.get("issues", [])
         fname = Path(finding.get("file", "")).name
         all_issues.extend(f"{fname}: {i}" for i in issues)
+        all_evidence.extend(finding.get("evidence", []))
 
     if all_issues:
         return ScanResult(
             safe=False,
             tier=2,
             reason="; ".join(all_issues),
+            evidence=all_evidence,
         )
 
     return ScanResult(safe=True, tier=2)

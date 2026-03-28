@@ -89,13 +89,17 @@ def scan_setup_py(path: Path) -> dict | None:
     if content is None:
         return None
     matches = []
+    evidence = []
 
-    for pattern, description in SETUP_PY_PATTERNS:
-        if pattern.search(content):
-            matches.append(description)
+    for line_num, line_text in enumerate(content.splitlines(), 1):
+        for pattern, description in SETUP_PY_PATTERNS:
+            if pattern.search(line_text):
+                if description not in matches:
+                    matches.append(description)
+                evidence.append({"line": line_num, "text": line_text.strip(), "issue": description})
 
     if matches:
-        return {"file": str(path), "issues": matches}
+        return {"file": str(path), "issues": matches, "evidence": evidence}
     return None
 
 
@@ -141,11 +145,15 @@ def scan_for_pth_files(directory: Path) -> list[dict]:
         if content is None:
             continue
         matches = []
-        for pattern, description in PTH_SUSPICIOUS:
-            if pattern.search(content):
-                matches.append(description)
+        evidence = []
+        for line_num, line_text in enumerate(content.splitlines(), 1):
+            for pattern, description in PTH_SUSPICIOUS:
+                if pattern.search(line_text):
+                    if description not in matches:
+                        matches.append(description)
+                    evidence.append({"line": line_num, "text": line_text.strip(), "issue": description})
         if matches:
-            findings.append({"file": str(pth_file), "issues": matches})
+            findings.append({"file": str(pth_file), "issues": matches, "evidence": evidence})
 
     return findings
 
@@ -164,12 +172,16 @@ def scan_for_obfuscation(directory: Path) -> list[dict]:
             continue
 
         matches = []
-        for pattern, description in OBFUSCATION_PATTERNS:
-            if pattern.search(content):
-                matches.append(description)
+        evidence = []
+        for line_num, line_text in enumerate(content.splitlines(), 1):
+            for pattern, description in OBFUSCATION_PATTERNS:
+                if pattern.search(line_text):
+                    if description not in matches:
+                        matches.append(description)
+                    evidence.append({"line": line_num, "text": line_text.strip(), "issue": description})
 
         if matches:
-            findings.append({"file": str(filepath), "issues": matches})
+            findings.append({"file": str(filepath), "issues": matches, "evidence": evidence})
 
     return findings
 
