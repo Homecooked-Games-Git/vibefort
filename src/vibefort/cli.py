@@ -23,6 +23,20 @@ import vibefort.constants as constants
 console = Console()
 
 
+def _get_gitignored_files(path: str) -> set[str]:
+    """Get the set of files that are gitignored in the given directory."""
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "--others", "--ignored", "--exclude-standard", "--directory"],
+            capture_output=True, text=True, cwd=path, timeout=10,
+        )
+        if result.returncode != 0:
+            return set()
+        return {f.strip().rstrip("/") for f in result.stdout.splitlines() if f.strip()}
+    except Exception:
+        return set()
+
+
 @click.group()
 @click.version_option(version=__version__, prog_name="vibefort")
 def main():
@@ -150,7 +164,14 @@ def scan(path):
     # Also run betterleaks on the full directory for secret detection
     if is_betterleaks_installed():
         secret_findings = run_betterleaks_scan(str(Path(path).resolve()))
+
+        # Filter out gitignored files — betterleaks scans everything,
+        # but we should respect .gitignore (if .env is ignored, don't report it)
+        gitignored = _get_gitignored_files(path)
+
         for sf in secret_findings:
+            if sf["file"] in gitignored:
+                continue
             findings.append(CodeFinding(
                 file=sf["file"],
                 line=sf["line"],
