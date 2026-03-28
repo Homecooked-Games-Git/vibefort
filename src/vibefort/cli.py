@@ -1,0 +1,180 @@
+"""VibeFort CLI — Security layer for AI-assisted development."""
+
+import subprocess
+import sys
+
+import click
+from rich.console import Console
+from rich.progress import Progress
+
+from vibefort import __version__
+from vibefort.config import load_config, save_config, Config
+from vibefort.display import show_status_panel, show_secret_found
+from vibefort.installer import (
+    install_shell_hook,
+    uninstall_shell_hook,
+    install_git_hook,
+    uninstall_git_hook,
+)
+from vibefort.secrets import download_betterleaks, is_betterleaks_installed, run_betterleaks_on_files
+from vibefort.interceptor import run_intercept
+
+console = Console()
+
+
+@click.group()
+@click.version_option(version=__version__, prog_name="vibefort")
+def main():
+    """Security layer for AI-assisted development. One command, permanent protection."""
+    pass
+
+
+@main.command()
+def install():
+    """Install VibeFort — shell hooks, git hooks, secret scanning. One command, done."""
+    console.print()
+
+    config = load_config()
+
+    # Step 1: Install shell hook
+    rc_path = install_shell_hook()
+    config.shell_hook_installed = True
+    console.print(f"[green]\u2714[/green] Shell hook installed ({rc_path.name})")
+
+    # Step 2: Download betterleaks
+    if not is_betterleaks_installed():
+        with Progress(console=console, transient=True) as progress:
+            task = progress.add_task("Downloading betterleaks...", total=100)
+
+            def on_progress(downloaded, total):
+                progress.update(task, completed=int(downloaded / total * 100))
+
+            try:
+                download_betterleaks(progress_callback=on_progress)
+                console.print("[green]\u2714[/green] Secret scanner installed")
+            except Exception as e:
+                console.print(f"[yellow]\u26a0[/yellow] Could not download betterleaks: {e}")
+                console.print("[dim]  Secret scanning will be limited. Run vibefort install again to retry.[/dim]")
+    else:
+        console.print("[green]\u2714[/green] Secret scanner ready")
+
+    # Step 3: Install git hook
+    try:
+        install_git_hook()
+        config.git_hook_installed = True
+        console.print("[green]\u2714[/green] Git pre-commit hook installed")
+    except Exception as e:
+        console.print(f"[yellow]\u26a0[/yellow] Could not install git hook: {e}")
+
+    # Save config
+    save_config(config)
+
+    console.print()
+    console.print("[bold green]\u2714 VibeFort is now protecting you. Forget about it.[/bold green]")
+    console.print()
+    console.print("[dim]Open a new terminal for the shell hook to take effect.[/dim]")
+
+
+@main.command()
+def uninstall():
+    """Remove all VibeFort hooks and configuration."""
+    console.print()
+
+    uninstall_shell_hook()
+    console.print("[green]\u2714[/green] Shell hook removed")
+
+    uninstall_git_hook()
+    console.print("[green]\u2714[/green] Git hook removed")
+
+    config = load_config()
+    config.shell_hook_installed = False
+    config.git_hook_installed = False
+    save_config(config)
+
+    console.print()
+    console.print("[bold]VibeFort has been deactivated.[/bold]")
+    console.print("[dim]Your scan history is preserved in ~/.vibefort/[/dim]")
+    console.print("[dim]To fully remove: rm -rf ~/.vibefort/[/dim]")
+
+
+@main.command()
+def status():
+    """Show VibeFort status and statistics."""
+    config = load_config()
+    show_status_panel(config, console=console)
+
+    from vibefort.banner import check_for_update_online
+    update = check_for_update_online()
+    if update:
+        console.print(f"\n  [bold yellow]\u2191 {update}[/bold yellow] — run: pip install -U vibefort")
+
+
+@main.command()
+@click.option("--title", is_flag=True, hidden=True)
+@click.option("--short", is_flag=True, hidden=True)
+def banner(title, short):
+    """Internal: print shell status banner."""
+    from vibefort.banner import get_banner, get_title, get_short
+    if title:
+        t = get_title()
+        if t:
+            print(t, end="")
+    elif short:
+        s = get_short()
+        if s:
+            print(s, end="")
+    else:
+        b = get_banner()
+        if b:
+            print(b)
+
+
+@main.command()
+@click.argument("manager")
+@click.argument("args", nargs=-1)
+def intercept(manager, args):
+    """Internal: intercept package manager commands (called by shell hook)."""
+    exit_code = run_intercept(manager, list(args))
+    sys.exit(exit_code)
+
+
+@main.command(name="scan-secrets")
+def scan_secrets():
+    """Internal: scan staged files for secrets (called by git pre-commit hook)."""
+    result = subprocess.run(
+        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"],
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        sys.exit(0)
+
+    staged_files = [f.strip() for f in result.stdout.strip().splitlines() if f.strip()]
+    if not staged_files:
+        sys.exit(0)
+
+    findings = run_betterleaks_on_files(staged_files)
+
+    if not findings:
+        config = load_config()
+        config.commits_scanned += 1
+        save_config(config)
+        sys.exit(0)
+
+    console.print()
+    console.print(f"[bold red]\u2716 VibeFort blocked this commit \u2014 {len(findings)} secret(s) found[/bold red]")
+    console.print()
+
+    for f in findings:
+        show_secret_found(f["file"], f["line"], f["description"], console=console)
+
+    console.print()
+    console.print("[dim]Fix the issues above and try again.[/dim]")
+
+    config = load_config()
+    config.commits_scanned += 1
+    config.secrets_caught += len(findings)
+    save_config(config)
+
+    sys.exit(1)

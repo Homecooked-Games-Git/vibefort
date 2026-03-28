@@ -1,0 +1,11 @@
+This project bundles the following third-party software:
+
+## betterleaks
+
+- License: MIT
+- Repository: https://github.com/betterleaks/betterleaks
+- Copyright: Copyright (c) 2026 Zachary Rice
+
+betterleaks is used for secret detection in git commits.
+The full MIT license text is available at:
+https://github.com/betterleaks/betterleaks/blob/main/LICENSE
