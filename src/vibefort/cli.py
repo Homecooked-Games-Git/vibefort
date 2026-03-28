@@ -37,6 +37,9 @@ def _get_gitignored_files(path: str) -> set[str]:
         return set()
 
 
+SKIP_UPDATE_COMMANDS = {"banner", "completions", "intercept", "scan-secrets"}
+
+
 class VibeFortGroup(click.Group):
     """Custom group that checks for updates after every command."""
 
@@ -45,17 +48,27 @@ class VibeFortGroup(click.Group):
             super().invoke(ctx)
         finally:
             # Skip update check for internal/fast commands
-            if ctx.invoked_subcommand not in ("banner", "completions", "intercept", "scan-secrets"):
+            cmd_name = (sys.argv[1] if len(sys.argv) > 1 else "")
+            if cmd_name not in SKIP_UPDATE_COMMANDS:
                 _silent_update_check()
 
 
 def _silent_update_check():
-    """Check for updates once per 24h, refresh banner cache. Non-blocking."""
+    """Check for updates max once per 24h. Non-blocking."""
     try:
+        import json
+        from datetime import datetime, timedelta
+
+        # Only check once per 24h
+        cache_file = constants.CACHE_DIR / "update_check.json"
+        if cache_file.exists():
+            data = json.loads(cache_file.read_text())
+            checked_at = datetime.fromisoformat(data.get("checked_at", ""))
+            if datetime.now() - checked_at < timedelta(hours=24):
+                return
+
         from vibefort.banner import check_for_update_online
-        from vibefort.interceptor import _refresh_banner_cache
         check_for_update_online()
-        _refresh_banner_cache()
     except Exception:
         pass
 
@@ -146,18 +159,20 @@ def status():
     if update:
         console.print(f"\n  [bold yellow]\u2191 {update}[/bold yellow] — run: vibefort update")
 
-    # Refresh terminal banner cache
-    from vibefort.interceptor import _refresh_banner_cache
-    _refresh_banner_cache()
-
 
 @main.command()
 @click.option("--title", is_flag=True, hidden=True)
 @click.option("--short", is_flag=True, hidden=True)
-def banner(title, short):
+@click.option("--prompt", is_flag=True, hidden=True)
+def banner(title, short, prompt):
     """Internal: print shell status banner."""
     from vibefort.banner import get_banner, get_title, get_short
-    if title:
+    if prompt:
+        # Combined output for shell hook: short|||title (single process)
+        s = get_short()
+        t = get_title()
+        print(f"{s}|||{t}", end="")
+    elif title:
         t = get_title()
         if t:
             print(t, end="")
@@ -318,12 +333,10 @@ def update():
             result = sp.run(cmd, capture_output=True, text=True, timeout=120)
             if result.returncode == 0:
                 console.print(f"  [green]✔ Updated successfully via {cmd[0]}.[/green]\n")
-                # Clear stale update cache and refresh terminal banner
+                # Clear stale update cache
                 cache_file = constants.CACHE_DIR / "update_check.json"
                 if cache_file.exists():
                     cache_file.unlink()
-                from vibefort.interceptor import _refresh_banner_cache
-                _refresh_banner_cache()
                 return
         except (FileNotFoundError, sp.TimeoutExpired):
             continue

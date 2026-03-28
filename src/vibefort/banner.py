@@ -10,7 +10,10 @@ from vibefort.config import load_config
 
 def _is_project_dir() -> bool:
     """Check if current directory looks like a project (has dependency files)."""
-    cwd = Path.cwd()
+    try:
+        cwd = Path.cwd()
+    except (FileNotFoundError, OSError):
+        return False
     project_files = [
         "requirements.txt", "pyproject.toml", "Pipfile", "setup.py",
         "package.json", "Cargo.toml", "go.mod", "Gemfile",
@@ -27,6 +30,7 @@ def _get_project_scan_info() -> tuple[str, int]:
         from vibefort.db import _get_conn
         cwd = str(Path.cwd())
         conn = _get_conn()
+        conn.execute("PRAGMA busy_timeout = 100")  # Don't freeze prompt if DB is locked
         row = conn.execute(
             "SELECT timestamp, result, details FROM scan_log WHERE target = ? ORDER BY id DESC LIMIT 1",
             (cwd,),

@@ -138,14 +138,16 @@ def run_betterleaks_on_files(file_paths: list[str]) -> list[dict]:
         tmp_path = Path(tmp) / "scan"
         tmp_path.mkdir()
 
-        # Map temp filenames back to original paths
+        # Copy files preserving directory structure to avoid name collisions
         name_to_original: dict[str, str] = {}
-        for fp in file_paths:
+        for i, fp in enumerate(file_paths):
             src = Path(fp)
             if src.exists():
-                dest = tmp_path / src.name
+                # Use index prefix to avoid collisions (e.g., src/config.py vs lib/config.py)
+                unique_name = f"{i}_{src.name}"
+                dest = tmp_path / unique_name
                 dest.write_bytes(src.read_bytes())
-                name_to_original[src.name] = fp
+                name_to_original[unique_name] = fp
 
         report_path = Path(tmp) / "report.json"
 

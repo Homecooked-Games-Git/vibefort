@@ -252,9 +252,6 @@ def run_intercept(manager: str, args: list[str]) -> int:
     config.packages_scanned += len(packages)
     save_config(config)
 
-    # Refresh banner cache so RPROMPT updates
-    _refresh_banner_cache()
-
     if blocked:
         return 1
 
@@ -311,17 +308,6 @@ def _scan_local_path(local_path: Path) -> ScanResult:
     return ScanResult(safe=True, tier=2)
 
 
-def _refresh_banner_cache():
-    """Update cached banner files so RPROMPT reflects latest stats."""
-    try:
-        from vibefort.banner import get_short, get_title
-        import vibefort.constants as constants
-        cache_dir = constants.CACHE_DIR
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        (cache_dir / "banner_short.txt").write_text(get_short())
-        (cache_dir / "banner_title.txt").write_text(get_title())
-    except Exception:
-        pass
 
 
 def _check_and_warn_cve(name: str, version: str, registry: str):
