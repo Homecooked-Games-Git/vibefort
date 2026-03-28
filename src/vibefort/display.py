@@ -162,6 +162,7 @@ def show_status_panel(config: Config, *, console: Console | None = None):
 
     active_str = "Active" if config.shell_hook_installed else "Inactive"
 
+    table.add_row("Version", f"[bold]{__version__}[/bold]")
     table.add_row("Status", f"[green]{active_str}[/green]" if config.shell_hook_installed else f"[red]{active_str}[/red]")
     table.add_row("Shell hook", "[green]\u2713[/green]" if config.shell_hook_installed else "[red]\u2717[/red]")
     table.add_row("Git hook", "[green]\u2713[/green]" if config.git_hook_installed else "[red]\u2717[/red]")

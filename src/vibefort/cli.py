@@ -18,6 +18,7 @@ from vibefort.installer import (
 )
 from vibefort.secrets import download_betterleaks, is_betterleaks_installed, run_betterleaks_on_files
 from vibefort.interceptor import run_intercept
+import vibefort.constants as constants
 
 console = Console()
 
@@ -107,6 +108,10 @@ def status():
     update = check_for_update_online()
     if update:
         console.print(f"\n  [bold yellow]\u2191 {update}[/bold yellow] — run: vibefort update")
+
+    # Refresh terminal banner cache
+    from vibefort.interceptor import _refresh_banner_cache
+    _refresh_banner_cache()
 
 
 @main.command()
@@ -264,12 +269,18 @@ def update():
             result = sp.run(cmd, capture_output=True, text=True, timeout=120)
             if result.returncode == 0:
                 console.print(f"  [green]✔ Updated successfully via {cmd[0]}.[/green]\n")
+                # Clear stale update cache and refresh terminal banner
+                cache_file = constants.CACHE_DIR / "update_check.json"
+                if cache_file.exists():
+                    cache_file.unlink()
+                from vibefort.interceptor import _refresh_banner_cache
+                _refresh_banner_cache()
                 return
         except (FileNotFoundError, sp.TimeoutExpired):
             continue
 
     console.print("  [red]✖ Could not update. Try manually:[/red]")
-    console.print("    vibefort update\n")
+    console.print("    pipx upgrade vibefort\n")
 
 
 @main.command()
