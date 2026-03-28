@@ -8,10 +8,14 @@ from pathlib import Path
 import vibefort.constants as constants
 
 _PACKAGE_MANAGERS = [
+    # Python
     ("pip", "pip"),
     ("pip3", "pip"),
     ("uv", "uv"),
     ("pipx", "pipx"),
+    ("poetry", "poetry"),
+    ("pdm", "pdm"),
+    # Node.js
     ("npm", "npm"),
     ("npx", "npx"),
     ("yarn", "yarn"),

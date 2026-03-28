@@ -16,6 +16,8 @@ MANAGER_REGISTRY = {
     "pip": "pip",
     "pipx": "pip",
     "uv": "pip",
+    "poetry": "pip",
+    "pdm": "pip",
     "npm": "npm",
     "npx": "npm",
     "yarn": "npm",
@@ -49,6 +51,18 @@ def parse_install_args(args: list[str], manager: str = "pip") -> list[tuple[str,
     # --- pipx: "pipx install X" / "pipx run X" ---
     if manager == "pipx":
         if args[0] not in ("install", "run"):
+            return []
+        return _parse_pip_packages(args[1:])
+
+    # --- poetry: "poetry add X" ---
+    if manager == "poetry":
+        if args[0] != "add":
+            return []
+        return _parse_pip_packages(args[1:])
+
+    # --- pdm: "pdm add X" ---
+    if manager == "pdm":
+        if args[0] != "add":
             return []
         return _parse_pip_packages(args[1:])
 

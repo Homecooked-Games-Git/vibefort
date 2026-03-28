@@ -116,3 +116,32 @@ def test_parse_install_args_uv_non_install():
 def test_parse_install_args_pipx():
     packages = parse_install_args(["install", "black"], manager="pipx")
     assert packages == [("black", "")]
+
+
+# --- poetry ---
+
+def test_parse_install_args_poetry_add():
+    packages = parse_install_args(["add", "flask"], manager="poetry")
+    assert packages == [("flask", "")]
+
+
+def test_parse_install_args_poetry_add_version():
+    packages = parse_install_args(["add", "flask==3.1.0"], manager="poetry")
+    assert packages == [("flask", "3.1.0")]
+
+
+def test_parse_install_args_poetry_non_add():
+    packages = parse_install_args(["install"], manager="poetry")
+    assert packages == []
+
+
+# --- pdm ---
+
+def test_parse_install_args_pdm_add():
+    packages = parse_install_args(["add", "requests"], manager="pdm")
+    assert packages == [("requests", "")]
+
+
+def test_parse_install_args_pdm_non_add():
+    packages = parse_install_args(["install"], manager="pdm")
+    assert packages == []
