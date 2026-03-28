@@ -37,7 +37,30 @@ def _get_gitignored_files(path: str) -> set[str]:
         return set()
 
 
-@click.group()
+class VibeFortGroup(click.Group):
+    """Custom group that checks for updates after every command."""
+
+    def invoke(self, ctx):
+        try:
+            super().invoke(ctx)
+        finally:
+            # Skip update check for internal/fast commands
+            if ctx.invoked_subcommand not in ("banner", "completions", "intercept", "scan-secrets"):
+                _silent_update_check()
+
+
+def _silent_update_check():
+    """Check for updates once per 24h, refresh banner cache. Non-blocking."""
+    try:
+        from vibefort.banner import check_for_update_online
+        from vibefort.interceptor import _refresh_banner_cache
+        check_for_update_online()
+        _refresh_banner_cache()
+    except Exception:
+        pass
+
+
+@click.group(cls=VibeFortGroup)
 @click.version_option(version=__version__, prog_name="vibefort")
 def main():
     """Security layer for AI-assisted development. One command, permanent protection."""
