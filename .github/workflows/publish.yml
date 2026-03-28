@@ -9,9 +9,12 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
+      contents: read  # Required for checkout on private org repos
       id-token: write  # Required for trusted publishing
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-python@v5
         with:
