@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import stat
 import subprocess
 import tarfile
 import tempfile
@@ -40,7 +41,9 @@ def is_betterleaks_installed() -> bool:
 
 def download_betterleaks(*, progress_callback=None) -> Path:
     url = constants.get_betterleaks_download_url()
+    constants.ensure_home_dir()
     constants.BIN_DIR.mkdir(parents=True, exist_ok=True)
+    os.chmod(constants.BIN_DIR, stat.S_IRWXU)  # 0700 — owner only
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
@@ -58,9 +61,14 @@ def download_betterleaks(*, progress_callback=None) -> Path:
                     if progress_callback and total:
                         progress_callback(downloaded, total)
 
-        # Verify checksum before extracting
+        # Verify checksum before extracting (fail-closed: reject unknown archives)
         expected = BETTERLEAKS_CHECKSUMS.get(archive_name)
-        if expected and not _verify_checksum(archive_path, expected):
+        if not expected:
+            raise RuntimeError(
+                f"No known checksum for {archive_name}. "
+                "Cannot verify integrity — refusing to install."
+            )
+        if not _verify_checksum(archive_path, expected):
             raise RuntimeError(
                 f"Checksum verification failed for {archive_name}. "
                 "The download may be corrupted or tampered with."
@@ -81,7 +89,8 @@ def download_betterleaks(*, progress_callback=None) -> Path:
                         constants.BETTERLEAKS_PATH.write_bytes(data)
                         break
 
-        constants.BETTERLEAKS_PATH.chmod(constants.BETTERLEAKS_PATH.stat().st_mode | 0o755)
+        # Owner-only executable (0700)
+        constants.BETTERLEAKS_PATH.chmod(stat.S_IRWXU)
 
     return constants.BETTERLEAKS_PATH
 
@@ -152,7 +161,7 @@ def parse_betterleaks_output(raw: str) -> list[dict]:
             "line": entry.get("StartLine", 0),
             "rule": entry.get("RuleID", "unknown"),
             "description": entry.get("Description", "Secret detected"),
-            "match": entry.get("Match", ""),
+            # Intentionally NOT including "Match" — never store actual secret values
         })
 
     return findings

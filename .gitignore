@@ -8,3 +8,11 @@ build/
 *.db
 .coverage
 node_modules/
+
+# Secrets and credentials
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx

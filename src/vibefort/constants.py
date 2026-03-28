@@ -1,5 +1,7 @@
 """Paths, URLs, and constants."""
 
+import os
+import stat
 from pathlib import Path
 import platform
 
@@ -44,3 +46,17 @@ FORT_ICON = "\U0001f3f0"  # Castle emoji
 
 # Top packages cache
 TOP_PACKAGES_COUNT = 10_000
+
+
+def ensure_home_dir() -> None:
+    """Create ~/.vibefort/ safely with restrictive permissions.
+
+    Checks for symlink attacks and sets directory to 0700.
+    """
+    if VIBEFORT_HOME.is_symlink():
+        raise RuntimeError(
+            f"{VIBEFORT_HOME} is a symlink — refusing to proceed. "
+            "Remove the symlink and run vibefort install again."
+        )
+    VIBEFORT_HOME.mkdir(parents=True, exist_ok=True)
+    os.chmod(VIBEFORT_HOME, stat.S_IRWXU)

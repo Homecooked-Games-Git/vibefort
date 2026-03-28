@@ -28,7 +28,11 @@ def load_config() -> Config:
     if not constants.CONFIG_PATH.exists():
         return Config()
 
-    data = toml.load(constants.CONFIG_PATH)
+    try:
+        data = toml.load(constants.CONFIG_PATH)
+    except (toml.TomlDecodeError, ValueError):
+        return Config()  # Return defaults if config is corrupted
+
     known_fields = {f.name for f in Config.__dataclass_fields__.values()}
     filtered = {k: v for k, v in data.items() if k in known_fields}
     return Config(**filtered)
@@ -36,15 +40,15 @@ def load_config() -> Config:
 
 def save_config(config: Config) -> None:
     """Save config to disk with restrictive permissions."""
-    constants.VIBEFORT_HOME.mkdir(parents=True, exist_ok=True)
-    # Restrict home directory to owner only
-    os.chmod(constants.VIBEFORT_HOME, stat.S_IRWXU)
+    constants.ensure_home_dir()
 
     data = asdict(config)
     # Remove None values for cleaner TOML
     data = {k: v for k, v in data.items() if v is not None}
 
-    constants.CONFIG_PATH.write_text(toml.dumps(data))
-
-    # Restrict permissions: owner read/write only
-    os.chmod(constants.CONFIG_PATH, stat.S_IRUSR | stat.S_IWUSR)
+    # Set restrictive umask before writing, then restore
+    old_umask = os.umask(0o077)
+    try:
+        constants.CONFIG_PATH.write_text(toml.dumps(data))
+    finally:
+        os.umask(old_umask)

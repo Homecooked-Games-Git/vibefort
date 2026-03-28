@@ -172,8 +172,15 @@ def _parse_npm_packages(args: list[str]) -> list[tuple[str, str]]:
     return packages
 
 
+ALLOWED_MANAGERS = frozenset(MANAGER_REGISTRY.keys())
+
+
 def run_intercept(manager: str, args: list[str]) -> int:
     """Main interception flow. Returns exit code (0 = proceed, 1 = blocked)."""
+    if manager not in ALLOWED_MANAGERS:
+        print(f"vibefort: unknown package manager '{manager}'", file=sys.stderr)
+        return 1
+
     packages = parse_install_args(list(args), manager=manager)
     registry = get_registry(manager)
 
