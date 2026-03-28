@@ -203,6 +203,11 @@ def scan(path):
                 severity="critical",
             ))
 
+    # Log scan result to database
+    from vibefort.db import log_scan
+    scan_target = str(Path(path).resolve())
+    log_scan("scan", scan_target, "clean" if not findings else "issues", str(len(findings)))
+
     if not findings:
         console.print("[green]\u2714 No issues found.[/green]\n")
         return
