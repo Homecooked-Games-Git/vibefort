@@ -129,6 +129,16 @@ def _check_for_update() -> str:
     return ""
 
 
+def _is_newer(latest: str, current: str) -> bool:
+    """Check if latest version is newer than current (semver comparison)."""
+    try:
+        latest_parts = [int(x) for x in latest.split(".")]
+        current_parts = [int(x) for x in current.split(".")]
+        return latest_parts > current_parts
+    except (ValueError, AttributeError):
+        return False
+
+
 def check_for_update_online() -> str:
     """Check PyPI for updates. Called by `vibefort status`, not the banner."""
     from vibefort import __version__
@@ -139,7 +149,7 @@ def check_for_update_online() -> str:
         if resp.status_code != 200:
             return ""
         latest = resp.json()["info"]["version"]
-        if latest != __version__:
+        if _is_newer(latest, __version__):
             msg = f"update available ({latest})"
             constants.CACHE_DIR.mkdir(parents=True, exist_ok=True)
             cache_file = constants.CACHE_DIR / "update_check.json"

@@ -106,7 +106,7 @@ def status():
     from vibefort.banner import check_for_update_online
     update = check_for_update_online()
     if update:
-        console.print(f"\n  [bold yellow]\u2191 {update}[/bold yellow] — run: pip install -U vibefort")
+        console.print(f"\n  [bold yellow]\u2191 {update}[/bold yellow] — run: vibefort update")
 
 
 @main.command()
@@ -269,7 +269,7 @@ def update():
             continue
 
     console.print("  [red]✖ Could not update. Try manually:[/red]")
-    console.print("    pip install -U vibefort\n")
+    console.print("    vibefort update\n")
 
 
 @main.command()
