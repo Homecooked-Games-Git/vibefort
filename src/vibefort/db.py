@@ -10,11 +10,12 @@ import vibefort.constants as constants
 
 def _get_conn() -> sqlite3.Connection:
     constants.DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    is_new = not constants.DB_PATH.exists()
-    conn = sqlite3.connect(str(constants.DB_PATH))
-    if is_new:
-        # Restrict to owner read/write only
-        os.chmod(constants.DB_PATH, stat.S_IRUSR | stat.S_IWUSR)
+    # Set restrictive umask before creating DB file
+    old_umask = os.umask(0o077)
+    try:
+        conn = sqlite3.connect(str(constants.DB_PATH))
+    finally:
+        os.umask(old_umask)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS scan_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

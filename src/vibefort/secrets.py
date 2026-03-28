@@ -50,7 +50,7 @@ def download_betterleaks(*, progress_callback=None) -> Path:
         archive_name = url.split("/")[-1]
         archive_path = tmp_path / archive_name
 
-        with httpx.stream("GET", url, follow_redirects=True) as response:
+        with httpx.stream("GET", url, follow_redirects=True, timeout=120) as response:
             response.raise_for_status()
             total = int(response.headers.get("content-length", 0))
             downloaded = 0

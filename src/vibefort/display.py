@@ -1,6 +1,7 @@
 """Rich terminal output for VibeFort."""
 
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 
@@ -83,7 +84,7 @@ def show_safe(package: str, version: str = "", elapsed: str = "", *, console: Co
     c = console or _default_console
     ver = f" {version}" if version else ""
     time_str = f" ({elapsed})" if elapsed else ""
-    c.print(f"[green]\u2714[/green] {package}{ver} \u2014 clean{time_str}")
+    c.print(f"[green]\u2714[/green] {escape(package)}{escape(ver)} \u2014 clean{time_str}")
 
 
 def show_blocked(package: str, reason: str, suggestion: str = "", *, console: Console | None = None):
@@ -91,7 +92,7 @@ def show_blocked(package: str, reason: str, suggestion: str = "", *, console: Co
     c = console or _default_console
 
     c.print()
-    c.print(f"  [bold red]\u2716 BLOCKED[/bold red] [bold]{package}[/bold]")
+    c.print(f"  [bold red]\u2716 BLOCKED[/bold red] [bold]{escape(package)}[/bold]")
     c.print()
 
     # Check if this is a simple reason (typosquat, doesn't exist, etc.)
@@ -99,18 +100,18 @@ def show_blocked(package: str, reason: str, suggestion: str = "", *, console: Co
 
     if len(categories) <= 1 and ";" not in reason:
         # Simple single-reason block (typosquat, slopsquat, etc.)
-        c.print(f"  [red]{reason}[/red]")
+        c.print(f"  [red]{escape(reason)}[/red]")
     else:
         # Multi-issue block (tier 2 scan) — show categorized
         for source, issues in categories.items():
-            c.print(f"  [bold yellow]{source}[/bold yellow]")
+            c.print(f"  [bold yellow]{escape(source)}[/bold yellow]")
             for issue in issues:
                 desc = _describe_issue(issue)
-                c.print(f"    [red]\u2022[/red] {desc}")
+                c.print(f"    [red]\u2022[/red] {escape(desc)}")
             c.print()
 
     if suggestion:
-        c.print(f"  [dim]{suggestion}[/dim]")
+        c.print(f"  [dim]{escape(suggestion)}[/dim]")
 
     c.print()
 
@@ -118,8 +119,8 @@ def show_blocked(package: str, reason: str, suggestion: str = "", *, console: Co
 def show_secret_found(file: str, line: int, description: str, *, console: Console | None = None):
     """Show a detected secret."""
     c = console or _default_console
-    c.print(f"  [bold red]\u2716[/bold red] [bold]{file}[/bold]:{line}")
-    c.print(f"    [red]{description}[/red]")
+    c.print(f"  [bold red]\u2716[/bold red] [bold]{escape(file)}[/bold]:{line}")
+    c.print(f"    [red]{escape(description)}[/red]")
 
 
 def show_status_panel(config: Config, *, console: Console | None = None):

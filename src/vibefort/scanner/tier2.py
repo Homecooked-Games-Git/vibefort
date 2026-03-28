@@ -12,6 +12,20 @@ import httpx
 
 from vibefort.scanner import ScanResult
 
+# Safety limits
+MAX_SCAN_FILE_SIZE = 10 * 1024 * 1024  # 10 MB — skip files larger than this
+MAX_EXTRACT_SIZE = 500 * 1024 * 1024   # 500 MB — abort if extracted content exceeds this
+
+
+def _safe_read(path: Path) -> str | None:
+    """Read a file only if it's a regular file under the size limit."""
+    if path.is_symlink() or not path.is_file():
+        return None
+    if path.stat().st_size > MAX_SCAN_FILE_SIZE:
+        return None
+    return path.read_text(errors="ignore")
+
+
 # Suspicious patterns in setup.py
 SETUP_PY_PATTERNS = [
     (re.compile(r"\bsubprocess\b.*\b(call|run|Popen|check_output)\b", re.DOTALL), "subprocess execution"),
@@ -71,7 +85,9 @@ def scan_setup_py(path: Path) -> dict | None:
     if not path.exists():
         return None
 
-    content = path.read_text(errors="ignore")
+    content = _safe_read(path)
+    if content is None:
+        return None
     matches = []
 
     for pattern, description in SETUP_PY_PATTERNS:
@@ -89,7 +105,10 @@ def scan_package_json(path: Path) -> dict | None:
         return None
 
     try:
-        data = json.loads(path.read_text(errors="ignore"))
+        raw = _safe_read(path)
+        if raw is None:
+            return None
+        data = json.loads(raw)
     except json.JSONDecodeError:
         return None
 
@@ -118,7 +137,9 @@ def scan_for_pth_files(directory: Path) -> list[dict]:
     findings = []
 
     for pth_file in directory.rglob("*.pth"):
-        content = pth_file.read_text(errors="ignore")
+        content = _safe_read(pth_file)
+        if content is None:
+            continue
         matches = []
         for pattern, description in PTH_SUSPICIOUS:
             if pattern.search(content):
@@ -137,12 +158,9 @@ def scan_for_obfuscation(directory: Path) -> list[dict]:
     for filepath in directory.rglob("*"):
         if filepath.suffix not in extensions:
             continue
-        if not filepath.is_file():
-            continue
 
-        try:
-            content = filepath.read_text(errors="ignore")
-        except OSError:
+        content = _safe_read(filepath)
+        if content is None:
             continue
 
         matches = []
@@ -233,14 +251,16 @@ def download_and_scan(package: str, version: str | None = None,
             if manager == "npm":
                 pkg_spec = f"{package}@{version}" if version else package
                 subprocess.run(
-                    ["npm", "pack", pkg_spec, "--pack-destination", str(download_dir)],
+                    ["npm", "pack", pkg_spec,
+                     "--pack-destination", str(download_dir),
+                     "--ignore-scripts"],  # Don't execute prepack/prepare scripts
                     capture_output=True, text=True, check=True, timeout=60,
                 )
             else:
                 pkg_spec = f"{package}=={version}" if version else package
                 subprocess.run(
-                    ["pip", "download", "--no-deps", "--no-binary", ":all:",
-                     "-d", str(download_dir), pkg_spec],
+                    ["pip", "download", "--no-deps",
+                     "-d", str(download_dir), pkg_spec],  # Prefer wheels (no setup.py execution)
                     capture_output=True, text=True, check=True, timeout=60,
                 )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
