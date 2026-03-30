@@ -134,6 +134,31 @@ def test_snapshot_updated_after_check(tmp_path):
     assert alerts2 == []
 
 
+# --- Deleted file detection ---
+
+def test_detects_deleted_file(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    ssh_dir = home / ".ssh"
+    ssh_dir.mkdir()
+    gitconfig = home / ".gitconfig"
+    gitconfig.write_text("[user]\n  name = Dev\n")
+
+    checksums_path = str(tmp_path / "checksums.toml")
+
+    # Initial snapshot
+    snapshot_config_files(checksums_path, home=str(home))
+
+    # Delete the file
+    gitconfig.unlink()
+
+    # Should detect deletion
+    alerts = check_config_changes(checksums_path, home=str(home))
+    deleted = [a for a in alerts if a.rule == "config-deleted"]
+    assert len(deleted) == 1
+    assert "Git config" in deleted[0].description
+
+
 # --- ConfigAlert dataclass ---
 
 def test_config_alert_fields():

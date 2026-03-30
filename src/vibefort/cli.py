@@ -513,6 +513,9 @@ def intercept_docker(args):
             if arg in ("-f", "--file") and i + 1 < len(args):
                 dockerfile = args[i + 1]
                 break
+            if arg.startswith("--file="):
+                dockerfile = arg.split("=", 1)[1]
+                break
 
         from pathlib import Path
         if Path(dockerfile).exists():

@@ -105,7 +105,7 @@ def _check_git_config(repo_path: Path) -> List[GitCloneFinding]:
     return findings
 
 
-def check_git_hooks(repo_path: Path) -> List[GitCloneFinding]:
+def check_git_hooks(repo_path: "Path | str") -> List[GitCloneFinding]:
     """Scan .git/hooks/ and .git/config for suspicious patterns."""
     repo_path = Path(repo_path)
 
