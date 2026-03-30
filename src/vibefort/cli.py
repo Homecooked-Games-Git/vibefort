@@ -1,5 +1,6 @@
 """VibeFort CLI — Security layer for AI-assisted development."""
 
+import os
 import subprocess
 import sys
 
@@ -37,7 +38,9 @@ def _get_gitignored_files(path: str) -> set[str]:
         return set()
 
 
-SKIP_UPDATE_COMMANDS = {"banner", "completions", "intercept", "scan-secrets"}
+SKIP_UPDATE_COMMANDS = {"banner", "completions", "intercept", "scan-secrets",
+                        "intercept-docker", "intercept-git", "intercept-chmod",
+                        "intercept-sudo", "check-env", "check-paste", "check-config"}
 
 
 class VibeFortGroup(click.Group):
@@ -116,6 +119,12 @@ def install():
         console.print("[green]\u2714[/green] Git pre-commit hook installed")
     except Exception as e:
         console.print(f"[yellow]\u26a0[/yellow] Could not install git hook: {e}")
+
+    # Initialize config file guard
+    from vibefort.configguard import snapshot_config_files
+    from vibefort.constants import CONFIG_CHECKSUMS_PATH
+    snapshot_config_files(str(CONFIG_CHECKSUMS_PATH))
+    console.print("[green]\u2714[/green] Config file guard initialized")
 
     # Save config
     save_config(config)
@@ -216,6 +225,28 @@ def scan(path):
                 rule=sf["rule"],
                 description=sf["description"],
                 severity="critical",
+            ))
+
+    # Scan Dockerfiles
+    from vibefort.dockerscan import find_dockerfiles, scan_dockerfile as scan_df
+    from vibefort.display import show_docker_finding
+    dockerfiles = find_dockerfiles(path)
+    docker_findings = []
+    for df_path in dockerfiles:
+        docker_findings.extend(scan_df(df_path))
+    if docker_findings:
+        console.print(f"  [yellow bold]DOCKERFILE ISSUES ({len(docker_findings)})[/yellow bold]")
+        for df in docker_findings:
+            show_docker_finding(df, console=console)
+        console.print()
+        # Add to findings count for summary
+        for df in docker_findings:
+            findings.append(CodeFinding(
+                file=df.file,
+                line=df.line,
+                rule=df.rule,
+                description=df.description,
+                severity=df.severity.lower(),
             ))
 
     # Log scan result to database
@@ -464,3 +495,205 @@ def scan_secrets():
     save_config(config)
 
     sys.exit(1)
+
+
+@main.command("intercept-docker", hidden=True)
+@click.argument("args", nargs=-1)
+def intercept_docker(args):
+    """Internal: called by shell hook when docker is invoked."""
+    from vibefort.dockerscan import scan_dockerfile
+    from vibefort.display import show_docker_finding
+
+    args = list(args)
+
+    # Only scan on 'docker build' commands
+    if args and args[0] == "build":
+        dockerfile = "Dockerfile"
+        for i, arg in enumerate(args):
+            if arg in ("-f", "--file") and i + 1 < len(args):
+                dockerfile = args[i + 1]
+                break
+
+        from pathlib import Path
+        if Path(dockerfile).exists():
+            findings = scan_dockerfile(dockerfile)
+            if findings:
+                console.print(f"\n[yellow]\U0001f3f0 VibeFort: {len(findings)} issue(s) in {dockerfile}[/yellow]")
+                for f in findings:
+                    show_docker_finding(f, console=console)
+                console.print()
+
+                critical = [f for f in findings if f.severity == "CRITICAL"]
+                if critical:
+                    console.print("[red bold]BLOCKED:[/red bold] Fix critical issues before building")
+                    cfg = load_config()
+                    cfg.dockerfiles_scanned += 1
+                    save_config(cfg)
+                    sys.exit(1)
+
+            cfg = load_config()
+            cfg.dockerfiles_scanned += 1
+            save_config(cfg)
+
+    # Pass through to real docker
+    os.execvp("docker", ["docker"] + args)
+
+
+@main.command("intercept-git", hidden=True)
+@click.argument("args", nargs=-1)
+def intercept_git(args):
+    """Internal: called by shell hook when git is invoked."""
+    args = list(args)
+
+    # Only intercept 'git clone'
+    if not args or args[0] != "clone":
+        os.execvp("git", ["git"] + args)
+        return
+
+    from vibefort.clonescan import check_git_hooks, check_typosquatted_org
+    from pathlib import Path
+
+    # Find the URL (first non-flag argument after 'clone')
+    clone_url = ""
+    dest_dir = ""
+    skip_next = False
+    positional = []
+    for i, arg in enumerate(args[1:], 1):
+        if skip_next:
+            skip_next = False
+            continue
+        if arg.startswith("-"):
+            if arg in ("-b", "--branch", "--depth", "-o", "--origin", "--reference"):
+                skip_next = True
+            continue
+        positional.append(arg)
+
+    if positional:
+        clone_url = positional[0]
+        if len(positional) > 1:
+            dest_dir = positional[1]
+
+    # Pre-clone check: typosquatted org
+    if clone_url:
+        findings = check_typosquatted_org(clone_url)
+        if findings:
+            for f in findings:
+                console.print(f"[yellow]\U0001f3f0 VibeFort: {f.description}[/yellow]")
+            console.print("[yellow]Proceeding with clone in 5 seconds...[/yellow]")
+            import time
+            time.sleep(5)
+
+    # Execute the actual clone
+    result = subprocess.run(["git"] + args)
+
+    # Post-clone: determine cloned directory
+    if result.returncode == 0 and clone_url:
+        if not dest_dir:
+            dest_dir = clone_url.rstrip("/").rsplit("/", 1)[-1]
+            if dest_dir.endswith(".git"):
+                dest_dir = dest_dir[:-4]
+
+        if Path(dest_dir).is_dir():
+            console.print(f"\n[blue]\U0001f3f0 VibeFort: scanning cloned repository...[/blue]")
+
+            hook_findings = check_git_hooks(dest_dir)
+            if hook_findings:
+                for f in hook_findings:
+                    console.print(f"  [red]{f.severity}[/red] {f.description}")
+                    if f.file:
+                        console.print(f"    Review: {f.file}", style="dim")
+
+            cfg = load_config()
+            cfg.clones_scanned += 1
+            save_config(cfg)
+
+    sys.exit(result.returncode)
+
+
+@main.command("intercept-chmod", hidden=True)
+@click.argument("args", nargs=-1)
+def intercept_chmod(args):
+    """Internal: called by shell hook when chmod is invoked."""
+    from vibefort.permguard import check_chmod_args
+
+    args = list(args)
+    findings = check_chmod_args(args)
+    if findings:
+        for f in findings:
+            severity_color = "red bold" if f.severity == "CRITICAL" else "yellow"
+            console.print(f"[{severity_color}]\U0001f3f0 VibeFort: {f.description}[/{severity_color}]")
+
+        critical = [f for f in findings if f.severity == "CRITICAL"]
+        if critical:
+            console.print("[red bold]BLOCKED:[/red bold] Fix the issue above before proceeding")
+            cfg = load_config()
+            cfg.permissions_blocked += 1
+            save_config(cfg)
+            sys.exit(1)
+
+    os.execvp("chmod", ["chmod"] + args)
+
+
+@main.command("intercept-sudo", hidden=True)
+@click.argument("args", nargs=-1)
+def intercept_sudo(args):
+    """Internal: called by shell hook when sudo is invoked."""
+    from vibefort.permguard import check_sudo_args
+
+    args = list(args)
+    findings = check_sudo_args(args)
+    if findings:
+        for f in findings:
+            severity_color = "red bold" if f.severity == "CRITICAL" else "yellow"
+            console.print(f"[{severity_color}]\U0001f3f0 VibeFort: {f.description}[/{severity_color}]")
+
+        critical = [f for f in findings if f.severity == "CRITICAL"]
+        if critical:
+            console.print("[red bold]BLOCKED:[/red bold] Command blocked for safety")
+            cfg = load_config()
+            cfg.permissions_blocked += 1
+            save_config(cfg)
+            sys.exit(1)
+
+    os.execvp("sudo", ["sudo"] + args)
+
+
+@main.command("check-env", hidden=True)
+def check_env():
+    """Internal: called by precmd hook to check .env files."""
+    from vibefort.envscan import check_env_files
+
+    cwd = os.getcwd()
+    findings = check_env_files(cwd)
+    if findings:
+        for f in findings:
+            severity_color = "red bold" if f.severity == "CRITICAL" else "yellow"
+            console.print(f"[{severity_color}]\U0001f3f0 VibeFort: {f.description}[/{severity_color}]")
+
+
+@main.command("check-paste", hidden=True)
+@click.argument("text")
+def check_paste(text):
+    """Internal: called by ZSH paste widget to scan pasted content."""
+    from vibefort.pastescan import scan_paste
+
+    findings = scan_paste(text)
+    if findings:
+        for f in findings:
+            severity_color = "red bold" if f.severity == "CRITICAL" else "yellow"
+            console.print(f"[{severity_color}]\U0001f3f0 VibeFort: {f.description}[/{severity_color}]")
+        sys.exit(1)
+
+
+@main.command("check-config", hidden=True)
+def check_config_cmd():
+    """Internal: called by precmd hook to check for config file changes."""
+    from vibefort.configguard import check_config_changes
+    from vibefort.constants import CONFIG_CHECKSUMS_PATH
+
+    alerts = check_config_changes(str(CONFIG_CHECKSUMS_PATH))
+    if alerts:
+        for a in alerts:
+            console.print(f"[red bold]\U0001f3f0 VibeFort: {a.description}[/red bold]")
+            console.print(f"    File: {a.file}", style="dim")
+        console.print("[yellow]Review these changes \u2014 if unexpected, investigate immediately[/yellow]")
