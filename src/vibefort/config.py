@@ -4,6 +4,7 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 import os
 import stat
+import tempfile
 import toml
 
 import vibefort.constants as constants
@@ -21,6 +22,9 @@ class Config:
     packages_blocked: int = 0
     commits_scanned: int = 0
     secrets_caught: int = 0
+    dockerfiles_scanned: int = 0
+    clones_scanned: int = 0
+    permissions_blocked: int = 0
 
 
 def load_config() -> Config:
@@ -46,9 +50,19 @@ def save_config(config: Config) -> None:
     # Remove None values for cleaner TOML
     data = {k: v for k, v in data.items() if v is not None}
 
-    # Set restrictive umask before writing, then restore
+    # Atomic write with restrictive permissions
     old_umask = os.umask(0o077)
     try:
-        constants.CONFIG_PATH.write_text(toml.dumps(data))
+        fd, tmp = tempfile.mkstemp(dir=str(constants.CONFIG_PATH.parent), suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w") as f:
+                f.write(toml.dumps(data))
+            os.replace(tmp, str(constants.CONFIG_PATH))
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
     finally:
         os.umask(old_umask)
