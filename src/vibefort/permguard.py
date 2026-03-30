@@ -18,6 +18,9 @@ class PermFinding:
 # Symbolic modes that grant world-writable access
 WORLD_WRITABLE_SYMBOLIC = re.compile(r"(?:^|,)(?:o[+=][rwxXst]*w|a[+=][rwxXst]*w)")
 
+# Symbolic modes that set setuid/setgid bit
+SETUID_SYMBOLIC = re.compile(r"(?:^|,)[uga]*\+[rwxXt]*s")
+
 # Suspicious content patterns in files being made executable
 SUSPICIOUS_CONTENT_PATTERNS = [
     re.compile(r"curl\b.*\|\s*(?:ba)?sh", re.IGNORECASE),
@@ -71,10 +74,17 @@ def check_chmod_args(args: list[str]) -> list[PermFinding]:
     # Handles both 3-digit (777) and 4-digit (0777, 2777) forms
     if mode.isdigit() and len(mode) in (3, 4):
         try:
-            if int(mode, 8) & 0o002:  # others-write bit
+            parsed = int(mode, 8)
+            if parsed & 0o002:  # others-write bit
                 findings.append(PermFinding(
                     rule="chmod-world-writable",
                     description=f"World-writable mode {mode} allows any user to modify files",
+                    severity="critical",
+                ))
+            if parsed & 0o6000:  # setuid or setgid bit
+                findings.append(PermFinding(
+                    rule="chmod-setuid",
+                    description=f"Mode {mode} sets setuid/setgid bit — allows privilege escalation",
                     severity="critical",
                 ))
         except ValueError:
@@ -85,6 +95,14 @@ def check_chmod_args(args: list[str]) -> list[PermFinding]:
         findings.append(PermFinding(
             rule="chmod-world-writable",
             description=f"Symbolic mode '{mode}' grants world-writable access",
+            severity="critical",
+        ))
+
+    # Check for setuid/setgid symbolic modes (+s)
+    if SETUID_SYMBOLIC.search(mode):
+        findings.append(PermFinding(
+            rule="chmod-setuid",
+            description=f"Mode '{mode}' sets setuid/setgid bit — allows privilege escalation",
             severity="critical",
         ))
 
@@ -148,6 +166,17 @@ def check_sudo_args(args: list[str]) -> list[PermFinding]:
     cmd, rest = _extract_sudo_command(args)
     if not cmd:
         return []
+
+    # Unwrap 'env' command: sudo env VAR=val cmd args...
+    if cmd == "env":
+        env_rest = list(rest)
+        while env_rest and "=" in env_rest[0]:
+            env_rest = env_rest[1:]
+        if env_rest:
+            cmd = env_rest[0]
+            rest = env_rest[1:]
+        else:
+            return []
 
     # Safe commands — return early with no findings
     if cmd in SAFE_SUDO_COMMANDS:

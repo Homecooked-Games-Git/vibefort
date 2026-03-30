@@ -573,7 +573,10 @@ def intercept_git(args):
             skip_next = False
             continue
         if arg.startswith("-"):
-            if arg in ("-b", "--branch", "--depth", "-o", "--origin", "--reference"):
+            if arg in ("-b", "--branch", "--depth", "-o", "--origin", "--reference",
+                       "--filter", "--shallow-exclude", "--shallow-since",
+                       "--separate-git-dir", "-j", "--jobs", "--server-option",
+                       "--bundle-uri", "--config", "--template"):
                 skip_next = True
             continue
         positional.append(arg)

@@ -47,18 +47,18 @@ def _build_hook_block() -> str:
         lines.append(_build_wrapper(func_name, manager))
 
     # Security guard wrappers
-    lines.append("# Docker build scanner")
+    lines.append("# Docker build scanner (only intercepts 'build')")
     lines.append('docker() {')
-    lines.append('    if command -v vibefort &>/dev/null; then')
+    lines.append('    if [ "$1" = "build" ] && command -v vibefort &>/dev/null; then')
     lines.append('        vibefort intercept-docker "$@"')
     lines.append('    else')
     lines.append('        command docker "$@"')
     lines.append('    fi')
     lines.append('}')
 
-    lines.append("# Git clone scanner")
+    lines.append("# Git clone scanner (only intercepts 'clone')")
     lines.append('git() {')
-    lines.append('    if command -v vibefort &>/dev/null; then')
+    lines.append('    if [ "$1" = "clone" ] && command -v vibefort &>/dev/null; then')
     lines.append('        vibefort intercept-git "$@"')
     lines.append('    else')
     lines.append('        command git "$@"')

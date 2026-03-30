@@ -221,3 +221,17 @@ def test_osc_title_setting_detected():
     text = "\x1b]0;malicious title\x07 normal text here"
     findings = scan_paste(text)
     assert any(f.rule == "osc-escape-attack" for f in findings)
+
+
+def test_dcs_escape_detected():
+    from vibefort.pastescan import scan_paste
+    text = "\x1bP+q544e\x1b\\ some normal text"
+    findings = scan_paste(text)
+    assert any(f.rule == "ansi-escape-attack" for f in findings)
+
+
+def test_apc_escape_detected():
+    from vibefort.pastescan import scan_paste
+    text = "\x1b_malicious command\x1b\\ normal text"
+    findings = scan_paste(text)
+    assert any(f.rule == "ansi-escape-attack" for f in findings)

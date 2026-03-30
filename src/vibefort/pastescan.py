@@ -114,6 +114,9 @@ _OSC_DANGEROUS_RE = re.compile(
     r")"
 )
 
+# Other dangerous escape sequences (DCS, APC, PM, SOS)
+_OTHER_ESCAPE_RE = re.compile(r"\x1b[P_X^]")
+
 
 def _scan_hidden_unicode(text: str, findings: list[PasteFinding]) -> None:
     """Detect zero-width / invisible Unicode characters."""
@@ -210,6 +213,15 @@ def _scan_ansi(text: str, findings: list[PasteFinding]) -> None:
         findings.append(PasteFinding(
             rule="osc-escape-attack",
             description="OSC escape sequence detected — can spoof URLs or manipulate terminal",
+            severity="critical",
+            position=m.start(),
+        ))
+
+    m = _OTHER_ESCAPE_RE.search(text)
+    if m:
+        findings.append(PasteFinding(
+            rule="ansi-escape-attack",
+            description="Dangerous terminal escape sequence (DCS/APC/PM) detected",
             severity="critical",
             position=m.start(),
         ))

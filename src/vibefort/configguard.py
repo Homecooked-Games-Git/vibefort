@@ -30,6 +30,7 @@ WATCHED_FILES = [
     ".docker/config.json",
     ".kube/config",
     ".aws/credentials",
+    ".aws/config",
 ]
 
 # Human-readable descriptions for alert messages
@@ -44,6 +45,7 @@ FILE_DESCRIPTIONS: dict[str, str] = {
     ".docker/config.json": "Docker config (may contain tokens)",
     ".kube/config": "Kubernetes config",
     ".aws/credentials": "AWS credentials",
+    ".aws/config": "AWS config (may contain credential_process)",
 }
 
 
@@ -109,9 +111,14 @@ def check_config_changes(
             data = toml.load(f)
         old_checksums: dict[str, str] = data.get("checksums", {})
     except (toml.TomlDecodeError, ValueError, OSError):
-        # Corrupted snapshot — re-create and return no alerts
+        # Corrupted snapshot — warn and re-create baseline
         snapshot_config_files(checksums_path, home=home)
-        return []
+        return [ConfigAlert(
+            rule="config-snapshot-corrupted",
+            description="Config guard snapshot was corrupted — re-creating baseline. Review watched files.",
+            severity="high",
+            file=str(snap_path),
+        )]
 
     # Compute current checksums
     current: dict[str, str] = {}

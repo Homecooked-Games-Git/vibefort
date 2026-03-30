@@ -117,10 +117,25 @@ def scan_dockerfile(filepath: str) -> List[DockerFinding]:
         # 3. curl|bash patterns in RUN
         if line.upper().startswith("RUN "):
             cmd = line[4:]
+            # Pipe pattern: curl ... | bash
             if re.search(r"\b(curl|wget)\b.*\|\s*(bash|sh|zsh)\b", cmd, re.IGNORECASE):
                 findings.append(DockerFinding(
                     file=filepath, line=lineno, rule="curl-pipe-shell",
                     description="Piping remote script directly to shell — supply chain risk",
+                    severity="critical",
+                ))
+            # Command substitution: bash -c "$(curl ...)" or $(...curl...)
+            elif re.search(r"\$\(.*\b(curl|wget)\b", cmd, re.IGNORECASE):
+                findings.append(DockerFinding(
+                    file=filepath, line=lineno, rule="curl-pipe-shell",
+                    description="Command substitution with remote fetch — supply chain risk",
+                    severity="critical",
+                ))
+            # Inline Python/Ruby/Perl remote exec
+            elif re.search(r"python3?\s+-c\s+.*(?:urllib|urlopen|requests\.get)", cmd, re.IGNORECASE):
+                findings.append(DockerFinding(
+                    file=filepath, line=lineno, rule="curl-pipe-shell",
+                    description="Inline Python remote code execution in RUN",
                     severity="critical",
                 ))
 
