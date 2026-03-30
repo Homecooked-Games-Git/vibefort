@@ -1,7 +1,7 @@
 """Paste injection scanner — detects malicious content in pasted text."""
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 MIN_SCAN_LENGTH = 2
 
