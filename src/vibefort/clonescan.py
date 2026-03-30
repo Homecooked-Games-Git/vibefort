@@ -73,7 +73,7 @@ def check_git_hooks(repo_path: Path) -> List[GitCloneFinding]:
     findings: List[GitCloneFinding] = []
 
     for hook_file in hooks_dir.iterdir():
-        if not hook_file.is_file():
+        if not hook_file.is_file() or hook_file.is_symlink():
             continue
         # Skip .sample files
         if hook_file.name.endswith(".sample"):
@@ -131,12 +131,14 @@ def check_typosquatted_org(clone_url: str) -> List[GitCloneFinding]:
 
 def _parse_org(url: str) -> Optional[str]:
     """Extract org/owner from a GitHub/GitLab clone URL."""
-    # SSH: git@github.com:ORG/repo.git
+    # SSH shorthand: git@github.com:ORG/repo.git
     ssh_match = re.match(r'git@[^:]+:([^/]+)/', url)
     if ssh_match:
         return ssh_match.group(1)
-    # HTTPS: https://github.com/ORG/repo.git
-    https_match = re.match(r'https?://[^/]+/([^/]+)/', url)
-    if https_match:
-        return https_match.group(1)
+    # HTTPS / SSH protocol / git protocol: https://github.com/ORG/repo.git
+    # Also handles ssh://git@github.com/ORG/repo.git and git://github.com/ORG/repo.git
+    # Strip optional port for ssh://git@github.com:2222/ORG/repo
+    proto_match = re.match(r'(?:https?|ssh|git)://[^/]+/([^/]+)/', url)
+    if proto_match:
+        return proto_match.group(1)
     return None

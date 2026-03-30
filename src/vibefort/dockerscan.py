@@ -39,16 +39,31 @@ def scan_dockerfile(filepath: str) -> List[DockerFinding]:
         return []
 
     content = path.read_text(errors="replace")
-    lines = content.splitlines()
-    if not lines:
+    raw_lines = content.splitlines()
+    if not raw_lines:
         return []
+
+    # Join backslash-continued lines so multi-line RUN commands are scanned as one
+    lines: list[tuple[int, str]] = []  # (first_lineno, joined_line)
+    i = 0
+    while i < len(raw_lines):
+        raw = raw_lines[i]
+        if _is_comment(raw) or not raw.strip():
+            i += 1
+            continue
+        joined = raw.rstrip()
+        first_lineno = i + 1
+        while joined.endswith("\\") and i + 1 < len(raw_lines):
+            joined = joined[:-1] + " " + raw_lines[i + 1].strip()
+            i += 1
+        lines.append((first_lineno, joined.strip()))
+        i += 1
 
     findings: List[DockerFinding] = []
     has_non_root_user = False
 
-    for lineno, raw_line in enumerate(lines, start=1):
-        line = raw_line.strip()
-        if not line or _is_comment(raw_line):
+    for lineno, line in lines:
+        if not line:
             continue
 
         # 1. FROM :latest or untagged
@@ -138,25 +153,20 @@ def scan_dockerfile(filepath: str) -> List[DockerFinding]:
                 ))
 
     # 2b. Check for run-as-root (no non-root USER directive found)
-    has_from = any(
-        l.strip().upper().startswith("FROM ") and not _is_comment(l)
-        for l in lines
-    )
+    has_from = any(line.upper().startswith("FROM ") for _, line in lines)
     if has_from and not has_non_root_user:
-        # Check if there's a USER directive at all, or only root/0
-        user_lines = [
-            (i + 1, l.strip())
-            for i, l in enumerate(lines)
-            if l.strip().upper().startswith("USER ") and not _is_comment(l)
+        user_directives = [
+            (ln, line) for ln, line in lines
+            if line.upper().startswith("USER ")
         ]
-        if not user_lines:
+        if not user_directives:
             findings.append(DockerFinding(
                 file=filepath, line=1, rule="run-as-root",
                 description="No USER directive — container runs as root",
                 severity="high",
             ))
         else:
-            for ul_lineno, ul_line in user_lines:
+            for ul_lineno, ul_line in user_directives:
                 user = ul_line.split()[1] if len(ul_line.split()) > 1 else ""
                 if user.lower() in ("root", "0"):
                     findings.append(DockerFinding(
@@ -177,7 +187,7 @@ def find_dockerfiles(directory: str) -> List[str]:
         # Skip if any parent directory is in the skip list
         if any(part in SKIP_DIRS for part in path.parts):
             continue
-        if path.is_file():
+        if path.is_file() and not path.is_symlink():
             results.append(str(path))
 
     return sorted(results)

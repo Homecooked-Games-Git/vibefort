@@ -523,7 +523,7 @@ def intercept_docker(args):
                     show_docker_finding(f, console=console)
                 console.print()
 
-                critical = [f for f in findings if f.severity == "CRITICAL"]
+                critical = [f for f in findings if f.severity == "critical"]
                 if critical:
                     console.print("[red bold]BLOCKED:[/red bold] Fix critical issues before building")
                     cfg = load_config()
@@ -536,7 +536,11 @@ def intercept_docker(args):
             save_config(cfg)
 
     # Pass through to real docker
-    os.execvp("docker", ["docker"] + args)
+    try:
+        os.execvp("docker", ["docker"] + args)
+    except FileNotFoundError:
+        console.print("[red]docker: command not found[/red]")
+        sys.exit(127)
 
 
 @main.command("intercept-git", hidden=True)
@@ -547,8 +551,11 @@ def intercept_git(args):
 
     # Only intercept 'git clone'
     if not args or args[0] != "clone":
-        os.execvp("git", ["git"] + args)
-        return
+        try:
+            os.execvp("git", ["git"] + args)
+        except FileNotFoundError:
+            console.print("[red]git: command not found[/red]")
+            sys.exit(127)
 
     from vibefort.clonescan import check_git_hooks, check_typosquatted_org
     from pathlib import Path
@@ -620,10 +627,10 @@ def intercept_chmod(args):
     findings = check_chmod_args(args)
     if findings:
         for f in findings:
-            severity_color = "red bold" if f.severity == "CRITICAL" else "yellow"
+            severity_color = "red bold" if f.severity == "critical" else "yellow"
             console.print(f"[{severity_color}]\U0001f3f0 VibeFort: {f.description}[/{severity_color}]")
 
-        critical = [f for f in findings if f.severity == "CRITICAL"]
+        critical = [f for f in findings if f.severity == "critical"]
         if critical:
             console.print("[red bold]BLOCKED:[/red bold] Fix the issue above before proceeding")
             cfg = load_config()
@@ -631,7 +638,11 @@ def intercept_chmod(args):
             save_config(cfg)
             sys.exit(1)
 
-    os.execvp("chmod", ["chmod"] + args)
+    try:
+        os.execvp("chmod", ["chmod"] + args)
+    except FileNotFoundError:
+        console.print("[red]chmod: command not found[/red]")
+        sys.exit(127)
 
 
 @main.command("intercept-sudo", hidden=True)
@@ -644,10 +655,10 @@ def intercept_sudo(args):
     findings = check_sudo_args(args)
     if findings:
         for f in findings:
-            severity_color = "red bold" if f.severity == "CRITICAL" else "yellow"
+            severity_color = "red bold" if f.severity == "critical" else "yellow"
             console.print(f"[{severity_color}]\U0001f3f0 VibeFort: {f.description}[/{severity_color}]")
 
-        critical = [f for f in findings if f.severity == "CRITICAL"]
+        critical = [f for f in findings if f.severity == "critical"]
         if critical:
             console.print("[red bold]BLOCKED:[/red bold] Command blocked for safety")
             cfg = load_config()
@@ -655,7 +666,11 @@ def intercept_sudo(args):
             save_config(cfg)
             sys.exit(1)
 
-    os.execvp("sudo", ["sudo"] + args)
+    try:
+        os.execvp("sudo", ["sudo"] + args)
+    except FileNotFoundError:
+        console.print("[red]sudo: command not found[/red]")
+        sys.exit(127)
 
 
 @main.command("check-env", hidden=True)
@@ -667,20 +682,20 @@ def check_env():
     findings = check_env_files(cwd)
     if findings:
         for f in findings:
-            severity_color = "red bold" if f.severity == "CRITICAL" else "yellow"
+            severity_color = "red bold" if f.severity == "critical" else "yellow"
             console.print(f"[{severity_color}]\U0001f3f0 VibeFort: {f.description}[/{severity_color}]")
 
 
 @main.command("check-paste", hidden=True)
-@click.argument("text")
-def check_paste(text):
+def check_paste():
     """Internal: called by ZSH paste widget to scan pasted content."""
     from vibefort.pastescan import scan_paste
 
+    text = sys.stdin.read()
     findings = scan_paste(text)
     if findings:
         for f in findings:
-            severity_color = "red bold" if f.severity == "CRITICAL" else "yellow"
+            severity_color = "red bold" if f.severity == "critical" else "yellow"
             console.print(f"[{severity_color}]\U0001f3f0 VibeFort: {f.description}[/{severity_color}]")
         sys.exit(1)
 

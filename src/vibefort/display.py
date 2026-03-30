@@ -147,7 +147,7 @@ def show_secret_found(file: str, line: int, description: str, *, console: Consol
 def show_docker_finding(finding, *, console: Console | None = None):
     """Display a single Dockerfile finding."""
     c = console or _default_console
-    severity_colors = {"CRITICAL": "red bold", "HIGH": "red", "MEDIUM": "yellow", "LOW": "blue"}
+    severity_colors = {"critical": "red bold", "high": "red", "medium": "yellow", "low": "blue"}
     color = severity_colors.get(finding.severity, "white")
     c.print(f"  [{color}]{finding.severity}[/{color}] {escape(finding.description)}")
     c.print(f"    {escape(finding.file)}:{finding.line}", style="dim")

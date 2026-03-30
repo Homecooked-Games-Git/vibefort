@@ -83,6 +83,33 @@ def _looks_like_secret(value: str) -> bool:
     return False
 
 
+def _is_git_ignored(directory: Path, filename: str) -> bool:
+    """Check if a file is gitignored using git check-ignore (authoritative).
+
+    Falls back to simple .gitignore pattern matching if git is unavailable
+    or the directory is not a proper git repository.
+    """
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["git", "check-ignore", "-q", filename],
+            capture_output=True, cwd=str(directory), timeout=5,
+        )
+        # returncode 0 = ignored, 1 = not ignored, 128 = not a git repo
+        if result.returncode in (0, 1):
+            return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        pass
+
+    # Fallback: simple pattern matching
+    gitignore_path = directory / ".gitignore"
+    if not gitignore_path.is_file():
+        return False
+    gitignore_content = gitignore_path.read_text(errors="replace")
+    lines = {line.strip() for line in gitignore_content.splitlines()}
+    return bool(lines & _GITIGNORE_ENV_PATTERNS)
+
+
 def check_env_files(directory: str) -> List[EnvFinding]:
     """Check .env files in a directory for security issues.
 
@@ -101,27 +128,17 @@ def check_env_files(directory: str) -> List[EnvFinding]:
     # Check 1: .env not in .gitignore
     git_dir = dir_path / ".git"
     if git_dir.is_dir():
-        gitignore_path = dir_path / ".gitignore"
-        if not gitignore_path.is_file():
+        env_ignored = _is_git_ignored(dir_path, ".env")
+        if not env_ignored:
             findings.append(EnvFinding(
                 rule="env-not-gitignored",
-                description=".env file exists but no .gitignore found; .env may be committed to git",
+                description=".env file is not gitignored; it may be committed to git",
                 severity="critical",
                 file=str(env_path),
             ))
-        else:
-            gitignore_content = gitignore_path.read_text(errors="replace")
-            lines = {line.strip() for line in gitignore_content.splitlines()}
-            if not lines & _GITIGNORE_ENV_PATTERNS:
-                findings.append(EnvFinding(
-                    rule="env-not-gitignored",
-                    description=".env file is not listed in .gitignore; it may be committed to git",
-                    severity="critical",
-                    file=str(env_path),
-                ))
 
     # Check 2: .env world-readable permissions
-    env_stat = os.stat(str(env_path))
+    env_stat = os.lstat(str(env_path))
     if env_stat.st_mode & stat.S_IROTH:
         findings.append(EnvFinding(
             rule="env-world-readable",

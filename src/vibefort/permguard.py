@@ -13,8 +13,7 @@ class PermFinding:
     severity: str  # "critical", "high", "medium"
 
 
-# Octal modes that grant world-writable access
-WORLD_WRITABLE_MODES = {"777", "776", "766", "667", "666"}
+# No longer a static set — we check the octal mode programmatically
 
 # Symbolic modes that grant world-writable access
 WORLD_WRITABLE_SYMBOLIC = re.compile(r"(?:^|,)(?:o\+[rwxXst]*w|a\+[rwxXst]*w)")
@@ -68,13 +67,17 @@ def check_chmod_args(args: list[str]) -> list[PermFinding]:
     mode = non_flag_args[0]
     files = non_flag_args[1:]
 
-    # Check for world-writable octal modes
-    if mode in WORLD_WRITABLE_MODES:
-        findings.append(PermFinding(
-            rule="chmod-world-writable",
-            description=f"World-writable mode {mode} allows any user to modify files",
-            severity="critical",
-        ))
+    # Check for world-writable octal modes (others-write bit set)
+    if mode.isdigit() and len(mode) == 3:
+        try:
+            if int(mode, 8) & 0o002:  # others-write bit
+                findings.append(PermFinding(
+                    rule="chmod-world-writable",
+                    description=f"World-writable mode {mode} allows any user to modify files",
+                    severity="critical",
+                ))
+        except ValueError:
+            pass
 
     # Check for world-writable symbolic modes
     if WORLD_WRITABLE_SYMBOLIC.search(mode):
