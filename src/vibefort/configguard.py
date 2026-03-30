@@ -104,18 +104,33 @@ def check_config_changes(
         return []
 
     # Load previous snapshot
-    with open(snap_path) as f:
-        data = toml.load(f)
-    old_checksums: dict[str, str] = data.get("checksums", {})
+    try:
+        with open(snap_path) as f:
+            data = toml.load(f)
+        old_checksums: dict[str, str] = data.get("checksums", {})
+    except (toml.TomlDecodeError, ValueError, OSError):
+        # Corrupted snapshot — re-create and return no alerts
+        snapshot_config_files(checksums_path, home=home)
+        return []
 
     # Compute current checksums
     current: dict[str, str] = {}
+    alerts_pre: List[ConfigAlert] = []
     for rel in WATCHED_FILES:
         full = home_path / rel
         if full.is_file():
             current[str(full)] = _sha256_file(full)
+        # Check if watched file is a symlink (security concern)
+        if full.is_symlink():
+            desc_name = FILE_DESCRIPTIONS.get(rel, rel)
+            alerts_pre.append(ConfigAlert(
+                rule="config-symlink",
+                description=f"{desc_name} is a symlink — may point to unexpected location",
+                severity="high",
+                file=str(full),
+            ))
 
-    alerts: List[ConfigAlert] = []
+    alerts: List[ConfigAlert] = list(alerts_pre)
 
     for filepath, new_hash in current.items():
         # Determine relative path for description lookup

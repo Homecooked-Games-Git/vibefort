@@ -76,7 +76,8 @@ def _check_git_config(repo_path: Path) -> List[GitCloneFinding]:
         return []
 
     # Check for custom hooksPath (hooks running from non-standard location)
-    if re.search(r"hooksPath\s*=", content):
+    # Git config keys are case-insensitive
+    if re.search(r"hookspath\s*=", content, re.IGNORECASE):
         findings.append(GitCloneFinding(
             rule="custom-hookspath",
             description="Repository has custom core.hooksPath — hooks may run from non-standard location",
@@ -85,7 +86,7 @@ def _check_git_config(repo_path: Path) -> List[GitCloneFinding]:
         ))
 
     # Check for fsmonitor (can execute arbitrary commands)
-    if re.search(r"fsmonitor\s*=", content):
+    if re.search(r"fsmonitor\s*=", content, re.IGNORECASE):
         findings.append(GitCloneFinding(
             rule="fsmonitor-hook",
             description="Repository has fsmonitor configured — can execute commands on git operations",

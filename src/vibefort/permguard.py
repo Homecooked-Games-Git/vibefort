@@ -16,7 +16,7 @@ class PermFinding:
 # No longer a static set — we check the octal mode programmatically
 
 # Symbolic modes that grant world-writable access
-WORLD_WRITABLE_SYMBOLIC = re.compile(r"(?:^|,)(?:o\+[rwxXst]*w|a\+[rwxXst]*w)")
+WORLD_WRITABLE_SYMBOLIC = re.compile(r"(?:^|,)(?:o[+=][rwxXst]*w|a[+=][rwxXst]*w)")
 
 # Suspicious content patterns in files being made executable
 SUSPICIOUS_CONTENT_PATTERNS = [
@@ -161,8 +161,31 @@ def check_sudo_args(args: list[str]) -> list[PermFinding]:
             severity="high",
         ))
 
-    # Check for sudo bash/sh -c with remote exec
+    # Check for sudo su -c (runs command in a login shell)
     cmd_args = [cmd] + rest
+    if cmd == "su" and "-c" in cmd_args:
+        c_idx = cmd_args.index("-c")
+        if c_idx + 1 < len(cmd_args):
+            shell_cmd = cmd_args[c_idx + 1]
+            # Check if the shell command invokes a package manager
+            for pm in PACKAGE_MANAGERS:
+                if re.search(rf"\b{pm}\b", shell_cmd):
+                    findings.append(PermFinding(
+                        rule="sudo-package-manager",
+                        description=f"Running '{pm}' via sudo su -c — use virtual environments instead",
+                        severity="high",
+                    ))
+                    break
+            for pattern in REMOTE_EXEC_PATTERNS:
+                if pattern.search(shell_cmd):
+                    findings.append(PermFinding(
+                        rule="sudo-remote-exec",
+                        description="Downloading and executing remote code with sudo su is extremely dangerous",
+                        severity="critical",
+                    ))
+                    break
+
+    # Check for sudo bash/sh -c with remote exec
     if cmd in ("bash", "sh") and "-c" in cmd_args:
         c_idx = cmd_args.index("-c")
         if c_idx + 1 < len(cmd_args):

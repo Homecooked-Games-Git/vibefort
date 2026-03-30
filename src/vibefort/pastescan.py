@@ -94,7 +94,7 @@ _COMMENT_LINE_RE = re.compile(r"^\s*(?:#|//|/\*|\*)\s*", re.MULTILINE)
 # Hex escape: 4+ consecutive \xNN
 _HEX_ESCAPE_RE = re.compile(r"(\\x[0-9a-fA-F]{2}){4,}")
 
-# Dangerous ANSI sequences
+# Dangerous ANSI sequences (CSI)
 _ANSI_DANGEROUS_RE = re.compile(
     r"\x1b\["
     r"(?:"
@@ -102,6 +102,15 @@ _ANSI_DANGEROUS_RE = re.compile(
     r"|\d+(?:;\d+)?H"    # cursor positioning
     r"|\d*[JK]"          # erase
     r"|8m"               # hidden text
+    r")"
+)
+
+# OSC sequences (terminal hyperlinks, title setting)
+_OSC_DANGEROUS_RE = re.compile(
+    r"\x1b\]"
+    r"(?:"
+    r"8;;"                # OSC 8 terminal hyperlinks (can spoof URLs)
+    r"|0;"                # title setting (social engineering)
     r")"
 )
 
@@ -186,12 +195,21 @@ def _scan_obfuscated(text: str, findings: list[PasteFinding]) -> None:
 
 
 def _scan_ansi(text: str, findings: list[PasteFinding]) -> None:
-    """Detect dangerous ANSI escape sequences."""
+    """Detect dangerous ANSI and OSC escape sequences."""
     m = _ANSI_DANGEROUS_RE.search(text)
     if m:
         findings.append(PasteFinding(
             rule="ansi-escape-attack",
             description="Dangerous ANSI escape sequence detected — can manipulate terminal display",
+            severity="critical",
+            position=m.start(),
+        ))
+
+    m = _OSC_DANGEROUS_RE.search(text)
+    if m:
+        findings.append(PasteFinding(
+            rule="osc-escape-attack",
+            description="OSC escape sequence detected — can spoof URLs or manipulate terminal",
             severity="critical",
             position=m.start(),
         ))
