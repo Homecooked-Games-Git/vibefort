@@ -21,6 +21,9 @@ class Config:
     packages_blocked: int = 0
     commits_scanned: int = 0
     secrets_caught: int = 0
+    dockerfiles_scanned: int = 0
+    clones_scanned: int = 0
+    permissions_blocked: int = 0
 
 
 def load_config() -> Config:
