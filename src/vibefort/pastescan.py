@@ -89,7 +89,7 @@ _HOMOGLYPH_CHARS = frozenset(_HOMOGLYPHS.keys())
 _BASE64_RE = re.compile(r"[A-Za-z0-9+/=]{40,}")
 
 # Comment line pattern
-_COMMENT_LINE_RE = re.compile(r"^\s*(?:#|//|/\*|\*)\s*", re.MULTILINE)
+_COMMENT_LINE_RE = re.compile(r"^\s*(?:#\s|//\s?|/\*|\*\s)", re.MULTILINE)
 
 # Hex escape: 4+ consecutive \xNN
 _HEX_ESCAPE_RE = re.compile(r"(\\x[0-9a-fA-F]{2}){4,}")

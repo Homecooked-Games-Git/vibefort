@@ -114,10 +114,6 @@ def _is_git_ignored(directory: Path, filename: str) -> bool:
     for pattern in gitignore_lines:
         if fnmatch.fnmatch(filename, pattern):
             return True
-    # Also check if any well-known env-covering patterns are present
-    # e.g. ".env.*" in gitignore should also cover ".env" itself
-    if filename == ".env" and gitignore_lines & _GITIGNORE_ENV_PATTERNS:
-        return True
     return False
 
 

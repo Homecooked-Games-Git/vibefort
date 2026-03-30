@@ -237,11 +237,17 @@ def check_sudo_args(args: list[str]) -> list[PermFinding]:
         ))
 
     # Check for sudo rm -rf on dangerous paths
+    # Handles: -rf, -Rf, -r -f, --recursive -f, etc.
     if cmd == "rm":
-        has_rf = any(
-            a.startswith("-") and "r" in a and "f" in a
-            for a in rest
-        )
+        rm_flags = set()
+        for a in rest:
+            if a.startswith("-") and not a.startswith("--"):
+                rm_flags.update(a[1:].lower())
+            elif a == "--recursive":
+                rm_flags.add("r")
+            elif a == "--force":
+                rm_flags.add("f")
+        has_rf = "r" in rm_flags and "f" in rm_flags
         if has_rf:
             for a in rest:
                 if not a.startswith("-"):

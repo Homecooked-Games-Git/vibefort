@@ -141,7 +141,10 @@ def check_config_changes(
 
     for filepath, new_hash in current.items():
         # Determine relative path for description lookup
-        rel = str(Path(filepath).relative_to(home_path))
+        try:
+            rel = str(Path(filepath).relative_to(home_path))
+        except ValueError:
+            rel = filepath
         desc_name = FILE_DESCRIPTIONS.get(rel, rel)
 
         if filepath not in old_checksums:

@@ -81,12 +81,14 @@ def test_env_in_gitignore_wildcard_dot_env_star(tmp_path):
     assert not any(f.rule == "env-not-gitignored" for f in findings)
 
 
-def test_env_in_gitignore_wildcard_dot_env_dot_star(tmp_path):
+def test_env_in_gitignore_wildcard_dot_env_dot_star_does_not_cover_env(tmp_path):
+    """'.env.*' pattern covers .env.local etc but NOT .env itself."""
     (tmp_path / ".env").write_text("SECRET=abc\n")
     (tmp_path / ".git").mkdir()
     (tmp_path / ".gitignore").write_text(".env.*\n")
     findings = check_env_files(str(tmp_path))
-    assert not any(f.rule == "env-not-gitignored" for f in findings)
+    # .env.* does NOT match .env — so .env should be flagged
+    assert any(f.rule == "env-not-gitignored" for f in findings)
 
 
 def test_no_gitignore_file_detected(tmp_path):

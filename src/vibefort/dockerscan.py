@@ -91,8 +91,6 @@ def scan_dockerfile(filepath: str) -> List[DockerFinding]:
             has_non_root_user = False
 
             image = line.split()[1] if len(line.split()) > 1 else ""
-            # AS alias handling
-            image = image.split(" ")[0]
             if "@sha256:" in image:
                 pass  # SHA-pinned is OK
             elif ":" not in image:
@@ -151,22 +149,27 @@ def scan_dockerfile(filepath: str) -> List[DockerFinding]:
         if line.upper().startswith(("ENV ", "ARG ")):
             directive = line.split()[0].upper()
             rest = line[len(directive):].strip()
-            # Parse name=value or name value
+            # Parse all KEY=VALUE pairs (handles multi-var ENV)
             if "=" in rest:
-                name, _, value = rest.partition("=")
-                name = name.strip()
-                value = value.strip().strip("'\"")
+                for pair in re.finditer(r"(\S+?)=('[^']*'|\"[^\"]*\"|\S*)", rest):
+                    name = pair.group(1)
+                    value = pair.group(2).strip("'\"")
+                    if SECRET_NAME_PATTERN.search(name) and value and value.lower() not in PLACEHOLDER_VALUES:
+                        findings.append(DockerFinding(
+                            file=filepath, line=lineno, rule="secret-in-env",
+                            description=f"Secret-looking value in {directive} {name}",
+                            severity="critical",
+                        ))
             else:
                 parts = rest.split(None, 1)
                 name = parts[0] if parts else ""
                 value = parts[1].strip().strip("'\"") if len(parts) > 1 else ""
-
-            if SECRET_NAME_PATTERN.search(name) and value and value.lower() not in PLACEHOLDER_VALUES:
-                findings.append(DockerFinding(
-                    file=filepath, line=lineno, rule="secret-in-env",
-                    description=f"Secret-looking value in {directive} {name}",
-                    severity="critical",
-                ))
+                if SECRET_NAME_PATTERN.search(name) and value and value.lower() not in PLACEHOLDER_VALUES:
+                    findings.append(DockerFinding(
+                        file=filepath, line=lineno, rule="secret-in-env",
+                        description=f"Secret-looking value in {directive} {name}",
+                        severity="critical",
+                    ))
 
         # 5. ADD from URL
         if line.upper().startswith("ADD "):

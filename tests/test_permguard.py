@@ -406,3 +406,18 @@ def test_sudo_env_pip():
 def test_sudo_env_npm():
     findings = check_sudo_args(["env", "npm", "install", "malware"])
     assert any(f.rule == "sudo-package-manager" for f in findings)
+
+
+# --- rm -r -f separated flags ---
+
+def test_sudo_rm_r_f_separated():
+    findings = check_sudo_args(["rm", "-r", "-f", "/home"])
+    assert any(f.rule == "sudo-destructive" for f in findings)
+
+def test_sudo_rm_Rf_uppercase():
+    findings = check_sudo_args(["rm", "-Rf", "/etc"])
+    assert any(f.rule == "sudo-destructive" for f in findings)
+
+def test_sudo_rm_recursive_force_long():
+    findings = check_sudo_args(["rm", "--recursive", "--force", "/var"])
+    assert any(f.rule == "sudo-destructive" for f in findings)
