@@ -1,6 +1,8 @@
 """Config guard — monitors sensitive dotfile changes."""
 
 import hashlib
+import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
@@ -71,11 +73,20 @@ def snapshot_config_files(checksums_path: str, home: Optional[str] = None) -> di
         if full.is_file():
             checksums[str(full)] = _sha256_file(full)
 
-    # Write snapshot
+    # Write snapshot atomically (temp file + rename)
     out = Path(checksums_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    with open(out, "w") as f:
-        toml.dump({"checksums": checksums}, f)
+    fd, tmp = tempfile.mkstemp(dir=str(out.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            toml.dump({"checksums": checksums}, f)
+        os.replace(tmp, str(out))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
     return checksums
 
@@ -122,6 +133,18 @@ def check_config_changes(
             alerts.append(ConfigAlert(
                 rule="config-modified",
                 description=f"{desc_name} modified",
+                severity="high",
+                file=filepath,
+            ))
+
+    # Check for deleted files
+    for filepath in old_checksums:
+        if filepath not in current:
+            rel = str(Path(filepath).relative_to(home_path))
+            desc_name = FILE_DESCRIPTIONS.get(rel, rel)
+            alerts.append(ConfigAlert(
+                rule="config-deleted",
+                description=f"{desc_name} was deleted",
                 severity="high",
                 file=filepath,
             ))

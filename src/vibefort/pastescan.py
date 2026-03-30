@@ -15,33 +15,33 @@ class PasteFinding:
 
 
 # Zero-width / invisible Unicode characters
-_ZERO_WIDTH_CHARS = frozenset(
-    "\u200b"   # zero-width space
-    "\u200c"   # ZWNJ
-    "\u200d"   # ZWJ
-    "\u200e"   # LTR mark
-    "\u200f"   # RTL mark
-    "\u2060"   # word joiner
-    "\u2061"   # function application
-    "\u2062"   # invisible times
-    "\u2063"   # invisible separator
-    "\u2064"   # invisible plus
-    "\ufeff"   # BOM
-    "\u00ad"   # soft hyphen
-)
+_ZERO_WIDTH_CHARS = frozenset([
+    "\u200b",  # zero-width space
+    "\u200c",  # ZWNJ
+    "\u200d",  # ZWJ
+    "\u200e",  # LTR mark
+    "\u200f",  # RTL mark
+    "\u2060",  # word joiner
+    "\u2061",  # function application
+    "\u2062",  # invisible times
+    "\u2063",  # invisible separator
+    "\u2064",  # invisible plus
+    "\ufeff",  # BOM
+    "\u00ad",  # soft hyphen
+])
 
 # RTL/LTR override and isolate characters
-_BIDI_CHARS = frozenset(
-    "\u202a"   # LTR embedding
-    "\u202b"   # RTL embedding
-    "\u202c"   # pop directional formatting
-    "\u202d"   # LTR override
-    "\u202e"   # RTL override
-    "\u2066"   # LTR isolate
-    "\u2067"   # RTL isolate
-    "\u2068"   # first strong isolate
-    "\u2069"   # pop directional isolate
-)
+_BIDI_CHARS = frozenset([
+    "\u202a",  # LTR embedding
+    "\u202b",  # RTL embedding
+    "\u202c",  # pop directional formatting
+    "\u202d",  # LTR override
+    "\u202e",  # RTL override
+    "\u2066",  # LTR isolate
+    "\u2067",  # RTL isolate
+    "\u2068",  # first strong isolate
+    "\u2069",  # pop directional isolate
+])
 
 # Homoglyph map: confusable character -> ASCII look-alike
 _HOMOGLYPHS: dict[str, str] = {

@@ -68,7 +68,8 @@ def check_chmod_args(args: list[str]) -> list[PermFinding]:
     files = non_flag_args[1:]
 
     # Check for world-writable octal modes (others-write bit set)
-    if mode.isdigit() and len(mode) == 3:
+    # Handles both 3-digit (777) and 4-digit (0777, 2777) forms
+    if mode.isdigit() and len(mode) in (3, 4):
         try:
             if int(mode, 8) & 0o002:  # others-write bit
                 findings.append(PermFinding(
@@ -110,13 +111,43 @@ def check_chmod_args(args: list[str]) -> list[PermFinding]:
     return findings
 
 
+_SUDO_FLAGS_WITH_VALUE = {"-u", "-g", "-C", "-D", "-R", "-T", "--user", "--group",
+                          "--close-from", "--chdir", "--role", "--type"}
+
+
+def _extract_sudo_command(args: list[str]) -> tuple[str, list[str]]:
+    """Extract the actual command from sudo args, skipping sudo flags.
+
+    Returns (command, remaining_args).
+    """
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--":
+            # Everything after -- is the command
+            i += 1
+            break
+        if arg in _SUDO_FLAGS_WITH_VALUE:
+            i += 2  # skip flag + its value
+            continue
+        if arg.startswith("-"):
+            i += 1  # skip boolean flag
+            continue
+        break  # first non-flag is the command
+    if i >= len(args):
+        return "", []
+    return args[i], args[i + 1:]
+
+
 def check_sudo_args(args: list[str]) -> list[PermFinding]:
     """Check sudo arguments for dangerous patterns."""
     if not args:
         return []
 
     findings: List[PermFinding] = []
-    cmd = args[0]
+    cmd, rest = _extract_sudo_command(args)
+    if not cmd:
+        return []
 
     # Safe commands — return early with no findings
     if cmd in SAFE_SUDO_COMMANDS:
@@ -131,10 +162,11 @@ def check_sudo_args(args: list[str]) -> list[PermFinding]:
         ))
 
     # Check for sudo bash/sh -c with remote exec
-    if cmd in ("bash", "sh") and "-c" in args:
-        c_idx = args.index("-c")
-        if c_idx + 1 < len(args):
-            shell_cmd = args[c_idx + 1]
+    cmd_args = [cmd] + rest
+    if cmd in ("bash", "sh") and "-c" in cmd_args:
+        c_idx = cmd_args.index("-c")
+        if c_idx + 1 < len(cmd_args):
+            shell_cmd = cmd_args[c_idx + 1]
             for pattern in REMOTE_EXEC_PATTERNS:
                 if pattern.search(shell_cmd):
                     findings.append(PermFinding(
@@ -145,7 +177,7 @@ def check_sudo_args(args: list[str]) -> list[PermFinding]:
                     break
 
     # Check for sudo python/python3/node -c
-    if cmd in ("python", "python3", "node") and "-c" in args:
+    if cmd in ("python", "python3", "node") and "-c" in cmd_args:
         findings.append(PermFinding(
             rule="sudo-code-exec",
             description=f"Running '{cmd} -c' with sudo executes arbitrary code as root",
@@ -156,12 +188,11 @@ def check_sudo_args(args: list[str]) -> list[PermFinding]:
     if cmd == "rm":
         has_rf = any(
             a.startswith("-") and "r" in a and "f" in a
-            for a in args[1:]
+            for a in rest
         )
         if has_rf:
-            for a in args[1:]:
+            for a in rest:
                 if not a.startswith("-"):
-                    # Normalize path
                     normalized = a.rstrip("/")
                     if not normalized:
                         normalized = "/"

