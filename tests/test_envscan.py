@@ -207,3 +207,26 @@ def test_no_env_example_no_secrets_check(tmp_path):
     (tmp_path / ".env").write_text("API_KEY=sk-1234567890abcdef\n")
     findings = check_env_files(str(tmp_path))
     assert not any(f.rule == "env-example-has-secrets" for f in findings)
+
+
+# --- BOM handling ---
+
+def test_bom_env_file(tmp_path):
+    from vibefort.envscan import _parse_env_values
+    content = "\ufeffAPI_KEY=test123"
+    values = _parse_env_values(content)
+    assert "API_KEY" in values  # BOM should not corrupt key name
+
+
+# --- .env.local scanned ---
+
+def test_env_local_not_gitignored(tmp_path):
+    from vibefort.envscan import check_env_files
+    import os
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".env").write_text("X=1\n")
+    (tmp_path / ".env.local").write_text("SECRET=abc\n")
+    (tmp_path / ".gitignore").write_text(".env\n")
+    os.chmod(str(tmp_path / ".env"), 0o600)
+    findings = check_env_files(str(tmp_path))
+    assert any(f.rule == "env-not-gitignored" and ".env.local" in f.file for f in findings)

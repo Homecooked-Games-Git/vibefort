@@ -205,3 +205,19 @@ def test_normal_ansi_colors_ok():
     text = "\x1b[31mred text\x1b[0m"
     findings = scan_paste(text)
     assert not any(f.rule == "ansi-escape-attack" for f in findings)
+
+
+# --- OSC escape attacks ---
+
+def test_osc8_hyperlink_detected():
+    from vibefort.pastescan import scan_paste
+    text = "Click here: \x1b]8;;https://evil.com\x1b\\safe text\x1b]8;;\x1b\\"
+    findings = scan_paste(text)
+    assert any(f.rule == "osc-escape-attack" for f in findings)
+
+
+def test_osc_title_setting_detected():
+    from vibefort.pastescan import scan_paste
+    text = "\x1b]0;malicious title\x07 normal text here"
+    findings = scan_paste(text)
+    assert any(f.rule == "osc-escape-attack" for f in findings)

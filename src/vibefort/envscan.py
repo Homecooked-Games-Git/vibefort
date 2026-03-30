@@ -51,6 +51,8 @@ def _parse_env_values(content: str) -> dict[str, str]:
     Skips comments and empty lines. Handles quoted values.
     """
     result: dict[str, str] = {}
+    # Strip BOM if present (common in Windows-edited files)
+    content = content.lstrip("\ufeff")
     for line in content.splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
@@ -101,13 +103,22 @@ def _is_git_ignored(directory: Path, filename: str) -> bool:
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         pass
 
-    # Fallback: simple pattern matching
+    # Fallback: simple pattern matching against the specific filename
     gitignore_path = directory / ".gitignore"
     if not gitignore_path.is_file():
         return False
     gitignore_content = gitignore_path.read_text(errors="replace")
-    lines = {line.strip() for line in gitignore_content.splitlines()}
-    return bool(lines & _GITIGNORE_ENV_PATTERNS)
+    gitignore_lines = {line.strip() for line in gitignore_content.splitlines() if line.strip() and not line.strip().startswith("#")}
+    # Check if the filename matches any gitignore pattern using fnmatch
+    import fnmatch
+    for pattern in gitignore_lines:
+        if fnmatch.fnmatch(filename, pattern):
+            return True
+    # Also check if any well-known env-covering patterns are present
+    # e.g. ".env.*" in gitignore should also cover ".env" itself
+    if filename == ".env" and gitignore_lines & _GITIGNORE_ENV_PATTERNS:
+        return True
+    return False
 
 
 def check_env_files(directory: str) -> List[EnvFinding]:
@@ -167,5 +178,32 @@ def check_env_files(directory: str) -> List[EnvFinding]:
                         file=str(env_example_path),
                     ))
                     break  # One finding is enough
+
+    # Check 4: .env variant files (.env.local, .env.production, etc.)
+    # Apply gitignore + permission checks to variants
+    if git_dir.is_dir():
+        for variant in dir_path.glob(".env.*"):
+            if variant.name == ".env.example" or not variant.is_file():
+                continue
+            if variant.is_symlink():
+                continue
+            if not _is_git_ignored(dir_path, variant.name):
+                findings.append(EnvFinding(
+                    rule="env-not-gitignored",
+                    description=f"{variant.name} is not gitignored; it may be committed to git",
+                    severity="critical",
+                    file=str(variant),
+                ))
+            try:
+                vstat = os.lstat(str(variant))
+                if vstat.st_mode & stat.S_IROTH:
+                    findings.append(EnvFinding(
+                        rule="env-world-readable",
+                        description=f"{variant.name} is world-readable; run 'chmod 600 {variant.name}'",
+                        severity="high",
+                        file=str(variant),
+                    ))
+            except OSError:
+                pass
 
     return findings

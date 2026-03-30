@@ -43,7 +43,8 @@ def scan_dockerfile(filepath: str) -> List[DockerFinding]:
     if not raw_lines:
         return []
 
-    # Join backslash-continued lines so multi-line RUN commands are scanned as one
+    # Join backslash-continued lines and heredoc blocks so multi-line RUN
+    # commands are scanned as one unit
     lines: list[tuple[int, str]] = []  # (first_lineno, joined_line)
     i = 0
     while i < len(raw_lines):
@@ -53,9 +54,27 @@ def scan_dockerfile(filepath: str) -> List[DockerFinding]:
             continue
         joined = raw.rstrip()
         first_lineno = i + 1
+        # Handle backslash continuations
         while joined.endswith("\\") and i + 1 < len(raw_lines):
             joined = joined[:-1] + " " + raw_lines[i + 1].strip()
             i += 1
+        # Handle heredoc syntax: RUN <<EOF ... EOF
+        stripped = joined.strip()
+        if stripped.upper().startswith("RUN ") and "<<" in stripped:
+            # Extract heredoc delimiter
+            heredoc_match = re.search(r"<<-?\s*['\"]?(\w+)['\"]?", stripped)
+            if heredoc_match:
+                delimiter = heredoc_match.group(1)
+                heredoc_body = []
+                i += 1
+                while i < len(raw_lines):
+                    hline = raw_lines[i].strip()
+                    if hline == delimiter:
+                        break
+                    heredoc_body.append(hline)
+                    i += 1
+                # Append heredoc body to the RUN command for scanning
+                joined = stripped + " " + " ".join(heredoc_body)
         lines.append((first_lineno, joined.strip()))
         i += 1
 
@@ -68,6 +87,9 @@ def scan_dockerfile(filepath: str) -> List[DockerFinding]:
 
         # 1. FROM :latest or untagged
         if line.upper().startswith("FROM "):
+            # Reset USER tracking per stage (only final stage matters)
+            has_non_root_user = False
+
             image = line.split()[1] if len(line.split()) > 1 else ""
             # AS alias handling
             image = image.split(" ")[0]
@@ -152,21 +174,28 @@ def scan_dockerfile(filepath: str) -> List[DockerFinding]:
                     severity="medium",
                 ))
 
-    # 2b. Check for run-as-root (no non-root USER directive found)
+    # 2b. Check for run-as-root (no non-root USER directive in final stage)
+    # Identify the final stage by finding the last FROM line
     has_from = any(line.upper().startswith("FROM ") for _, line in lines)
     if has_from and not has_non_root_user:
-        user_directives = [
-            (ln, line) for ln, line in lines
+        # Find lines in the final stage (after the last FROM)
+        last_from_idx = max(
+            i for i, (_, line) in enumerate(lines)
+            if line.upper().startswith("FROM ")
+        )
+        final_stage_lines = lines[last_from_idx:]
+        final_user_directives = [
+            (ln, line) for ln, line in final_stage_lines
             if line.upper().startswith("USER ")
         ]
-        if not user_directives:
+        if not final_user_directives:
             findings.append(DockerFinding(
                 file=filepath, line=1, rule="run-as-root",
-                description="No USER directive — container runs as root",
+                description="No USER directive in final stage — container runs as root",
                 severity="high",
             ))
         else:
-            for ul_lineno, ul_line in user_directives:
+            for ul_lineno, ul_line in final_user_directives:
                 user = ul_line.split()[1] if len(ul_line.split()) > 1 else ""
                 if user.lower() in ("root", "0"):
                     findings.append(DockerFinding(

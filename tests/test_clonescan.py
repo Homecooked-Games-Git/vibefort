@@ -210,3 +210,14 @@ class TestGitConfigScanning:
         (git_dir / "config").write_text("[core]\n\trepositoryformatversion = 0\n")
         findings = check_git_hooks(str(tmp_path))
         assert len(findings) == 0
+
+
+# --- Case-insensitive hooksPath ---
+
+def test_hookspath_lowercase(tmp_path):
+    from vibefort.clonescan import check_git_hooks
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+    (git_dir / "config").write_text("[core]\n\thookspath = .githooks\n")
+    findings = check_git_hooks(str(tmp_path))
+    assert any(f.rule == "custom-hookspath" for f in findings)
