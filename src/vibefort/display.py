@@ -144,6 +144,15 @@ def show_secret_found(file: str, line: int, description: str, *, console: Consol
     c.print(f"    [red]{escape(description)}[/red]")
 
 
+def show_docker_finding(finding, *, console: Console | None = None):
+    """Display a single Dockerfile finding."""
+    c = console or _default_console
+    severity_colors = {"CRITICAL": "red bold", "HIGH": "red", "MEDIUM": "yellow", "LOW": "blue"}
+    color = severity_colors.get(finding.severity, "white")
+    c.print(f"  [{color}]{finding.severity}[/{color}] {escape(finding.description)}")
+    c.print(f"    {escape(finding.file)}:{finding.line}", style="dim")
+
+
 def show_status_panel(config: Config, *, console: Console | None = None):
     """Show the vibefort status dashboard."""
     c = console or _default_console
@@ -170,5 +179,8 @@ def show_status_panel(config: Config, *, console: Console | None = None):
     table.add_row("Packages blocked", str(config.packages_blocked))
     table.add_row("Commits scanned", str(config.commits_scanned))
     table.add_row("Secrets caught", str(config.secrets_caught))
+    table.add_row("Dockerfiles scanned", str(config.dockerfiles_scanned))
+    table.add_row("Clones scanned", str(config.clones_scanned))
+    table.add_row("Permissions blocked", str(config.permissions_blocked))
 
     c.print(Panel(table, title=f"VibeFort v{__version__}", border_style="green"))
