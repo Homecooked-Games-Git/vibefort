@@ -159,6 +159,30 @@ def test_detects_deleted_file(tmp_path):
     assert "Git config" in deleted[0].description
 
 
+# --- Symlink detection ---
+
+def test_detects_symlinked_config_file(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    ssh_dir = home / ".ssh"
+    ssh_dir.mkdir()
+
+    checksums_path = str(tmp_path / "checksums.toml")
+
+    # Take initial snapshot (no symlink yet)
+    snapshot_config_files(checksums_path, home=str(home))
+
+    # Replace with a symlink
+    real_file = tmp_path / "real_config"
+    real_file.write_text("Host *\n")
+    (ssh_dir / "config").symlink_to(real_file)
+
+    # Should detect symlink
+    alerts = check_config_changes(checksums_path, home=str(home))
+    symlink_alerts = [a for a in alerts if a.rule == "config-symlink"]
+    assert len(symlink_alerts) >= 1
+
+
 # --- ConfigAlert dataclass ---
 
 def test_config_alert_fields():

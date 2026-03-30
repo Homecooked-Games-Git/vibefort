@@ -497,6 +497,19 @@ def scan_secrets():
     sys.exit(1)
 
 
+_REENTRANT_ENV = "_VIBEFORT_ACTIVE"
+
+
+def _check_reentrant(cmd: str, args: list[str]):
+    """If vibefort is already active, pass through to avoid infinite recursion."""
+    if os.environ.get(_REENTRANT_ENV):
+        try:
+            os.execvp(cmd, [cmd] + args)
+        except FileNotFoundError:
+            sys.exit(127)
+    os.environ[_REENTRANT_ENV] = "1"
+
+
 @main.command("intercept-docker", hidden=True)
 @click.argument("args", nargs=-1)
 def intercept_docker(args):
@@ -505,6 +518,7 @@ def intercept_docker(args):
     from vibefort.display import show_docker_finding
 
     args = list(args)
+    _check_reentrant("docker", args)
 
     # Only scan on 'docker build' commands
     if args and args[0] == "build":
@@ -551,6 +565,7 @@ def intercept_docker(args):
 def intercept_git(args):
     """Internal: called by shell hook when git is invoked."""
     args = list(args)
+    _check_reentrant("git", args)
 
     # Only intercept 'git clone'
     if not args or args[0] != "clone":
@@ -634,6 +649,7 @@ def intercept_chmod(args):
     from vibefort.permguard import check_chmod_args
 
     args = list(args)
+    _check_reentrant("chmod", args)
     findings = check_chmod_args(args)
     if findings:
         for f in findings:
@@ -662,6 +678,7 @@ def intercept_sudo(args):
     from vibefort.permguard import check_sudo_args
 
     args = list(args)
+    _check_reentrant("sudo", args)
     findings = check_sudo_args(args)
     if findings:
         for f in findings:

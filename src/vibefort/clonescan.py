@@ -23,6 +23,10 @@ KNOWN_HOOKS = {
     "pre-commit", "post-commit", "pre-push", "post-checkout",
     "post-merge", "pre-rebase", "post-rewrite", "prepare-commit-msg",
     "commit-msg", "pre-receive", "post-receive", "update",
+    "pre-merge-commit", "post-index-change", "reference-transaction",
+    "fsmonitor-watchman", "pre-applypatch", "post-applypatch",
+    "push-to-checkout", "proc-receive", "pre-auto-gc",
+    "sendemail-validate",
 }
 
 # ── Dangerous patterns in git hooks ──────────────────────────────────────
