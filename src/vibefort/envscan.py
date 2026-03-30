@@ -145,8 +145,11 @@ def check_env_files(directory: str) -> List[EnvFinding]:
             ))
 
     # Check 2: .env world-readable permissions
-    env_stat = os.lstat(str(env_path))
-    if env_stat.st_mode & stat.S_IROTH:
+    try:
+        env_stat = os.lstat(str(env_path))
+    except OSError:
+        env_stat = None
+    if env_stat and env_stat.st_mode & stat.S_IROTH:
         findings.append(EnvFinding(
             rule="env-world-readable",
             description=".env file is world-readable; run 'chmod 600 .env' to restrict access",

@@ -73,7 +73,10 @@ def snapshot_config_files(checksums_path: str, home: Optional[str] = None) -> di
     for rel in WATCHED_FILES:
         full = home_path / rel
         if full.is_file():
-            checksums[str(full)] = _sha256_file(full)
+            try:
+                checksums[str(full)] = _sha256_file(full)
+            except OSError:
+                pass  # Skip files that become unreadable
 
     # Write snapshot atomically (temp file + rename)
     out = Path(checksums_path)
@@ -126,7 +129,10 @@ def check_config_changes(
     for rel in WATCHED_FILES:
         full = home_path / rel
         if full.is_file():
-            current[str(full)] = _sha256_file(full)
+            try:
+                current[str(full)] = _sha256_file(full)
+            except OSError:
+                pass  # Skip files that become unreadable
         # Check if watched file is a symlink (security concern)
         if full.is_symlink():
             desc_name = FILE_DESCRIPTIONS.get(rel, rel)
