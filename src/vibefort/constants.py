@@ -13,6 +13,7 @@ HOOKS_DIR = VIBEFORT_HOME / "hooks"
 BIN_DIR = VIBEFORT_HOME / "bin"
 BETTERLEAKS_PATH = BIN_DIR / "betterleaks"
 CACHE_DIR = VIBEFORT_HOME / "cache"
+CONFIG_CHECKSUMS_PATH = VIBEFORT_HOME / "config_checksums.toml"
 
 # betterleaks download
 BETTERLEAKS_VERSION = "1.1.1"
